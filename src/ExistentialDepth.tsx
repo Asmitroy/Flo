@@ -5,17 +5,15 @@ interface ExistentialDepthProps {
   meaningScore: MotionValue<number>;
 }
 
-const OVERLAY_WORDS = ["emptiness", "drift", "nothing", "later", "eventually"];
-
 export const ExistentialDepth = React.memo(function ExistentialDepth({ meaningScore }: ExistentialDepthProps) {
   const smoothedMeaning = useMotionValue(meaningScore.get());
 
   // DOM Refs for direct manipulation to prevent component re-renders
   const svgRef = useRef<SVGSVGElement>(null);
+  const shaftRef = useRef<SVGRectElement>(null);
   const glowRef = useRef<SVGCircleElement>(null);
   const textOverlayRef = useRef<HTMLDivElement>(null);
   const statusTextRef = useRef<HTMLSpanElement>(null);
-  const monologueRef = useRef<HTMLDivElement>(null);
 
   useAnimationFrame((_, delta) => {
     // 1. Smooth out the meaningScore with viscous LERP
@@ -28,24 +26,34 @@ export const ExistentialDepth = React.memo(function ExistentialDepth({ meaningSc
 
     const t = performance.now() / 1000;
 
-    // 2. Animate SVG viewBox (Shaft narrows from 0 0 100 200 to 20 0 60 200)
+    // 2. Animate SVG viewBox (Shaft narrows from 0 0 200 160 to narrower)
     const svg = svgRef.current;
     if (svg) {
-      const vbX = 20 * (1 - newSmooth / 100);
-      const vbW = 60 + 40 * (newSmooth / 100);
-      svg.setAttribute('viewBox', `${vbX} 0 ${vbW} 200`);
+      const vbX = 30 * (1 - newSmooth / 100);
+      const vbW = 140 + 60 * (newSmooth / 100);
+      svg.setAttribute('viewBox', `${vbX} 0 ${vbW} 160`);
     }
 
-    // 3. Animate radial glow opacity at the bottom
+    // 3. Animate shaft rect dimensions
+    const shaft = shaftRef.current;
+    if (shaft) {
+      const shaftWidth = 40 + (newSmooth / 100) * 100;
+      const shaftX = 100 - shaftWidth / 2;
+      shaft.setAttribute('x', shaftX.toString());
+      shaft.setAttribute('width', shaftWidth.toString());
+    }
+
+    // 4. Animate radial glow opacity at the bottom
     const glow = glowRef.current;
     if (glow) {
       const glowOpacity = (newSmooth / 100) * 0.8;
       glow.setAttribute('opacity', glowOpacity.toString());
     }
 
-    // 4. Word cycling overlay at meaning < 20
+    // 5. Word cycling overlay at meaning < 20
     const textOverlay = textOverlayRef.current;
     if (textOverlay) {
+      const OVERLAY_WORDS = ["emptiness", "drift", "nothing", "later", "eventually"];
       if (newSmooth < 20) {
         const wordIdx = Math.floor(t / 4) % OVERLAY_WORDS.length;
         const targetWord = OVERLAY_WORDS[wordIdx];
@@ -63,24 +71,17 @@ export const ExistentialDepth = React.memo(function ExistentialDepth({ meaningSc
       }
     }
 
-    // 5. Update Status State Text, Monologue, and Colors directly
+    // 6. Update Status State Text directly
     const statusText = statusTextRef.current;
-    const monologue = monologueRef.current;
-    if (statusText && monologue) {
-      let stateStr = "QUESTIONING";
-      let monologueStr = "What lies ahead?";
-      let monologueCol = "text-amber-500/70";
+    if (statusText) {
+      let stateStr = "DRIFTING";
       let statusCol = "text-amber-500";
 
-      if (newSmooth > 70) {
+      if (newSmooth > 60) {
         stateStr = "GROUNDED";
-        monologueStr = "The horizon is clear.";
-        monologueCol = "text-zinc-400/90 font-bold";
         statusCol = "text-zinc-400 font-bold";
       } else if (newSmooth < 30) {
         stateStr = "VOID";
-        monologueStr = "Nothing remains.";
-        monologueCol = "text-zinc-700/80 italic";
         statusCol = "text-rose-950 font-bold animate-pulse";
       }
 
@@ -88,59 +89,64 @@ export const ExistentialDepth = React.memo(function ExistentialDepth({ meaningSc
         statusText.textContent = stateStr;
         statusText.className = `text-[10px] font-mono font-bold tracking-wider ${statusCol}`;
       }
-
-      if (monologue.textContent !== monologueStr) {
-        monologue.textContent = monologueStr;
-        monologue.className = `text-[9px] font-mono max-w-[120px] leading-relaxed transition-all duration-300 ${monologueCol}`;
-      }
     }
   });
 
   return (
-    <div className="flex flex-col items-center justify-between h-full py-4 select-none w-full border-r border-zinc-900/30 px-3">
-      <div className="text-[9px] font-mono text-zinc-500 uppercase tracking-widest text-center">
-        Meaning Core
-      </div>
+    <div className="flex flex-col items-center justify-between h-full py-4 select-none w-full px-3">
 
       {/* SVG Depth Field / Well */}
-      <div className="flex-1 flex justify-center items-center py-2 h-full w-full min-h-[220px] relative">
+      <div className="flex-1 flex justify-center items-center py-2 h-full w-full relative" style={{ width: '100%', minHeight: '120px' }}>
         <svg 
           ref={svgRef}
-          viewBox="0 0 100 200" 
-          className="w-full h-full max-h-[220px] border border-zinc-950 bg-black/40 rounded-lg overflow-hidden"
+          viewBox="0 0 200 160" 
+          width="100%"
+          height="160"
+          className="border border-zinc-950 bg-black/40 rounded-lg overflow-hidden"
         >
           <defs>
             {/* Soft amber radial glow representing reflection from deep inside well */}
-            <radialGradient id="well-glow" cx="50%" cy="90%" r="50%">
-              <stop offset="0%" stopColor="#d97706" stopOpacity="0.4" />
-              <stop offset="40%" stopColor="#78350f" stopOpacity="0.1" />
-              <stop offset="100%" stopColor="#000000" stopOpacity="0" />
+            <radialGradient id="well-glow" cx="50%" cy="85%" r="50%">
+              <stop offset="0%" stopColor="rgb(239,159,39)" stopOpacity="0.4" />
+              <stop offset="50%" stopColor="rgb(120,53,15)" stopOpacity="0.1" />
+              <stop offset="100%" stopColor="rgb(0,0,0)" stopOpacity="0" />
             </radialGradient>
           </defs>
 
-          {/* Depth Well Walls (close in visually via viewBox transform) */}
+          {/* Depth Well Shaft */}
+          <rect
+            ref={shaftRef}
+            x="30"
+            y="0"
+            width="140"
+            height="160"
+            fill="rgba(255,255,255,0.05)"
+            stroke="rgba(255,255,255,0.15)"
+            strokeWidth="1"
+          />
+
           {/* Left Wall */}
-          <line x1="20" y1="0" x2="20" y2="200" stroke="#1f2937" strokeWidth="1" opacity="0.35" />
-          <line x1="23" y1="0" x2="23" y2="200" stroke="#111827" strokeWidth="0.5" opacity="0.2" />
+          <line x1="30" y1="0" x2="30" y2="160" stroke="#1f2937" strokeWidth="1" opacity="0.35" />
+          <line x1="33" y1="0" x2="33" y2="160" stroke="#111827" strokeWidth="0.5" opacity="0.2" />
 
           {/* Right Wall */}
-          <line x1="80" y1="0" x2="80" y2="200" stroke="#1f2937" strokeWidth="1" opacity="0.35" />
-          <line x1="77" y1="0" x2="77" y2="200" stroke="#111827" strokeWidth="0.5" opacity="0.2" />
+          <line x1="170" y1="0" x2="170" y2="160" stroke="#1f2937" strokeWidth="1" opacity="0.35" />
+          <line x1="167" y1="0" x2="167" y2="160" stroke="#111827" strokeWidth="0.5" opacity="0.2" />
 
           {/* Deep Faint Glow */}
           <circle 
             ref={glowRef}
-            cx="50" 
-            cy="180" 
-            r="40" 
+            cx="100" 
+            cy="140" 
+            r="50" 
             fill="url(#well-glow)" 
             opacity="0.8" 
           />
 
           {/* Centered Depth Indicator Markings */}
-          <line x1="45" y1="50" x2="55" y2="50" stroke="#374151" strokeWidth="0.5" opacity="0.15" />
-          <line x1="45" y1="100" x2="55" y2="100" stroke="#374151" strokeWidth="0.5" opacity="0.15" />
-          <line x1="45" y1="150" x2="55" y2="150" stroke="#374151" strokeWidth="0.5" opacity="0.15" />
+          <line x1="90" y1="40" x2="110" y2="40" stroke="#374151" strokeWidth="0.5" opacity="0.15" />
+          <line x1="90" y1="80" x2="110" y2="80" stroke="#374151" strokeWidth="0.5" opacity="0.15" />
+          <line x1="90" y1="120" x2="110" y2="120" stroke="#374151" strokeWidth="0.5" opacity="0.15" />
         </svg>
 
         {/* Faint Text Overlay for Paralysis/Void */}
@@ -155,22 +161,14 @@ export const ExistentialDepth = React.memo(function ExistentialDepth({ meaningSc
         </div>
       </div>
 
-      {/* State & Monologue Text */}
-      <div className="flex flex-col items-center mt-4 text-center space-y-1.5 w-full">
+      {/* Status Word */}
+      <div className="flex flex-col items-center mt-3 text-center w-full">
         <span 
           ref={statusTextRef} 
-          className="text-[10px] font-mono font-bold tracking-wider text-zinc-500"
+          className="text-[10px] font-mono font-bold tracking-wider text-amber-500"
         >
-          QUESTIONING
+          DRIFTING
         </span>
-        <div className="min-h-[28px] flex items-center justify-center">
-          <div 
-            ref={monologueRef} 
-            className="text-[9px] font-mono max-w-[120px] leading-relaxed transition-all duration-300 text-zinc-500/80"
-          >
-            "What lies ahead?"
-          </div>
-        </div>
       </div>
     </div>
   );

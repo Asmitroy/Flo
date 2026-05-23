@@ -8,6 +8,7 @@ export interface Archetype {
     socialPressure: number;
     economicStress: number;
     physicalMovement: number;
+    syntheticInteraction: number;
   };
 }
 
@@ -22,6 +23,7 @@ export const ARCHETYPES: Archetype[] = [
       socialPressure: 70,
       economicStress: 60,
       physicalMovement: 20,
+      syntheticInteraction: 60,
     }
   },
   {
@@ -34,6 +36,7 @@ export const ARCHETYPES: Archetype[] = [
       socialPressure: 80,
       economicStress: 75,
       physicalMovement: 15,
+      syntheticInteraction: 40,
     }
   },
   {
@@ -46,6 +49,7 @@ export const ARCHETYPES: Archetype[] = [
       socialPressure: 85,
       economicStress: 30,
       physicalMovement: 10,
+      syntheticInteraction: 85,
     }
   },
   {
@@ -58,6 +62,7 @@ export const ARCHETYPES: Archetype[] = [
       socialPressure: 10,
       economicStress: 15,
       physicalMovement: 80,
+      syntheticInteraction: 10,
     }
   },
   {
@@ -70,6 +75,7 @@ export const ARCHETYPES: Archetype[] = [
       socialPressure: 90,
       economicStress: 90,
       physicalMovement: 5,
+      syntheticInteraction: 90,
     }
   },
   {
@@ -82,6 +88,33 @@ export const ARCHETYPES: Archetype[] = [
       socialPressure: 30,
       economicStress: 35,
       physicalMovement: 55,
+      syntheticInteraction: 25,
+    }
+  },
+  {
+    name: "Deep Flow",
+    id: "deep-flow",
+    summary: "High cognitive and physical load. Low social noise. Flow state probability: high.",
+    targets: {
+      sleepDebt: 15,
+      stimulation: 55,
+      socialPressure: 20,
+      economicStress: 25,
+      physicalMovement: 75,
+      syntheticInteraction: 15,
+    }
+  },
+  {
+    name: "Sustainable High Performance",
+    id: "sustainable-high-performance",
+    summary: "Moderate load, structured recovery. Long-term viable. Peak output without burnout trajectory.",
+    targets: {
+      sleepDebt: 20,
+      stimulation: 50,
+      socialPressure: 35,
+      economicStress: 40,
+      physicalMovement: 60,
+      syntheticInteraction: 25,
     }
   }
 ];

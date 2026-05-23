@@ -25,7 +25,7 @@ interface ReflectionModalProps {
   sliderValues: SliderSnapshot;
   activeArchetype: string | null;
   sessionDuration: number; // seconds
-  onClose: () => void;
+  onClose: (insight: string) => void;
   isOpen: boolean;
   firedEvents: { name: string; category: 'destabilizer' | 'stabilizer' }[];
   peakLoad?: number;
@@ -37,38 +37,46 @@ function buildEnvironmentReport(
   sliders: SliderSnapshot,
   sessionDuration: number,
   firedEvents: { name: string; category: 'destabilizer' | 'stabilizer' }[],
+  systemScores: SystemScores,
+  systemStartScores: SystemScores,
   peakLoad?: number
 ): string[] {
   const lines: string[] = [];
 
   // 1. Duration framing
-  if (sessionDuration < 120) {
+  if (sessionDuration < 90) {
     lines.push("This represents a brief environmental exposure.");
-  } else if (sessionDuration <= 300) {
+  } else if (sessionDuration >= 90 && sessionDuration < 300) {
     lines.push("The subject was exposed for a sustained period.");
   } else {
     lines.push("Extended exposure duration amplified cumulative effects.");
   }
 
   // 2. Event summary
-  if (firedEvents.length > 0) {
-    const destabilizers = firedEvents.filter(e => e.category === 'destabilizer');
-    const stabilizers = firedEvents.filter(e => e.category === 'stabilizer');
+  const destabilizers = firedEvents.filter(e => e.category === 'destabilizer');
+  const stabilizers = firedEvents.filter(e => e.category === 'stabilizer');
 
-    if (destabilizers.length > 2 && stabilizers.length > 1) {
-      lines.push("The environment alternated between stress and recovery cycles.");
-    } else if (destabilizers.length > 2) {
-      lines.push("Multiple destabilizing events compounded system stress.");
-    } else if (stabilizers.length > 1) {
-      lines.push("Recovery events interrupted degradation trajectories.");
-    } else if (destabilizers.length > 0 && stabilizers.length > 0) {
-      lines.push("The environment alternated between stress and recovery cycles.");
-    }
+  const anyDroppedOver15 = (
+    (systemStartScores.attention - systemScores.attention > 15) ||
+    (systemScores.nervous - systemStartScores.nervous > 15) ||
+    (systemStartScores.identity - systemScores.identity > 15) ||
+    (systemStartScores.agency - systemScores.agency > 15) ||
+    (systemStartScores.meaning - systemScores.meaning > 15)
+  );
+
+  if (destabilizers.length >= 1 && stabilizers.length >= 1) {
+    lines.push("The environment alternated between stress and recovery cycles.");
+  }
+  if (destabilizers.length >= 2 && peakLoad !== undefined && peakLoad > 50) {
+    lines.push("Multiple destabilizing events compounded system stress.");
+  }
+  if (stabilizers.length >= 2 && anyDroppedOver15) {
+    lines.push("Recovery events interrupted degradation trajectories.");
   }
 
   // 3. Peak load note
   if (peakLoad !== undefined) {
-    if (peakLoad > 80) {
+    if (peakLoad > 70) {
       lines.push("Peak nervous system load reached critical threshold.");
     } else if (peakLoad >= 50) {
       lines.push("Moderate load peaks were recorded during exposure.");
@@ -184,7 +192,7 @@ const ARCHETYPE_PREFIXES: Record<string, string> = {
 
 type SystemKey = 'attention' | 'nervous' | 'identity' | 'agency' | 'meaning';
 
-function generateInsight(
+export function generateInsight(
   sliders: SliderSnapshot,
   scores: SystemScores,
   archetype: string | null
@@ -295,7 +303,7 @@ const ReflectionModal = React.memo(function ReflectionModal({
   firedEvents,
   peakLoad,
 }: ReflectionModalProps) {
-  const environmentLines = buildEnvironmentReport(sliderValues, sessionDuration, firedEvents, peakLoad);
+  const environmentLines = buildEnvironmentReport(sliderValues, sessionDuration, firedEvents, systemScores, systemStartScores, peakLoad);
   const systemRows       = buildSystemRows(systemStartScores, systemScores);
   const insight          = generateInsight(sliderValues, systemScores, activeArchetype);
 
@@ -316,7 +324,7 @@ const ReflectionModal = React.memo(function ReflectionModal({
           transition={{ duration: 0.35 }}
           className="fixed inset-0 z-[60] flex items-center justify-center p-4"
           style={{ backgroundColor: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(6px)' }}
-          onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+          onClick={(e) => { if (e.target === e.currentTarget) onClose(insight); }}
         >
           <motion.div
             initial={{ opacity: 0, y: 8 }}
@@ -534,7 +542,7 @@ const ReflectionModal = React.memo(function ReflectionModal({
               </div>
 
               <button
-                onClick={onClose}
+                onClick={() => onClose(insight)}
                 style={{
                   fontFamily: 'monospace',
                   fontSize: '11px',

@@ -159,6 +159,112 @@ I have successfully completed the implementation of the Cognitive Degradation UI
 
 ---
 
+## Telemetry Balancing, Report Thresholds & Layout Shifts
+
+### 18. Cognitive Score Balancing Formulas
+- **meaningScore**: Rewrote the derivation math in [src/CognitiveSimulator.tsx](file:///d:/Codebase/Flo/src/CognitiveSimulator.tsx) to prioritize physical movement and prevent degradation in recovery cabins:
+  `meaningScore = 15 + (movement * 0.40) - (stimulation * 0.25) + (100 - synthetic) * 0.15 - (economicStress * 0.15) - (sleepDebt * 0.10)`
+- **agencyScore**: Replaced the agency formula in the drift loop to properly integrate nervousSystemLoad and fatigue freezes:
+  `agencyScore = 20 + (movement * 0.30) - (economicStress * 0.30) - (sleepDebt * 0.25) - (nervousSystemLoad * 0.15) + 10`
+
+### 19. Diagnostic Report Event Thresholds
+- Refactored `buildEnvironmentReport` in [src/ReflectionModal.tsx](file:///d:/Codebase/Flo/src/ReflectionModal.tsx) to enforce strict event triggers:
+  - **Recovery events**: Only fires if stabilizers count is `>= 2` AND at least one system wellness dropped `> 15pts`.
+  - **Multiple destabilizers**: Only fires if destabilizers count is `>= 2` AND `peakLoad > 50`.
+  - **Critical peak load**: Only fires if `peakLoad > 70`.
+  - **Alternating cycles**: Only fires if destabilizers `>= 1` AND stabilizers `>= 1`.
+  - **Exposure duration scale**: Corrected brief/sustained/extended duration bounds: Brief is strictly `< 90s`, Sustained is `90s to 300s`, and Extended is `> 300s`.
+
+### 20. CognitiveWeather Circle Upgrades
+- Re-coded `<CognitiveWeather />` circles visualizer. Removed static grey placeholders.
+- Concentric circle strokes now morph dynamically:
+  - **CLEAR**: 3 indigo `#6B8FE8` circles, opacity `0.3-0.6`, slow pulsing scale staggered per ring.
+  - **OVERCAST**: Compresses radius (`[22, 40, 58]`), shifts stroke to amber `#EF9F27`, and doubles pulse speed.
+  - **STORM**: Jitters offset horizontally/vertically per frame, shifts to crimson `#E24B4A`, scale oscillates rapidly at 0.3s intervals, and applies double offset ±3px cyan channels simulating chromatic aberration.
+  - **VOID**: Fades rings to 0 opacity over 2s and renders a single `4px` dim white dot at center.
+
+### 21. Symmetrical Layout Restructuring
+- Removed `"AGENCY CORE"` and `"MEANING CORE"` text labels from [src/AgencyMeter.tsx](file:///d:/Codebase/Flo/src/AgencyMeter.tsx) and [src/ExistentialDepth.tsx](file:///d:/Codebase/Flo/src/ExistentialDepth.tsx) to clear floating empty space.
+- Moved `<AgencyMeter />` to the LEFT panel, rendering it inside `<HudTelemetry />` below system status bars.
+- Moved `<ExistentialDepth />` to the RIGHT panel, rendering it inside `<RealtimeLogs />` stacked above the attention graph.
+- Transformed the CENTER panel into a single unified column, centering the large `<CognitiveWeather />` canvas above the text block and sacred geometry emblem.
+
+### 22. Autopsy resilience calculations
+- Updated the "Highest Core Resilience" calculation in [src/CognitiveSimulator.tsx](file:///d:/Codebase/Flo/src/CognitiveSimulator.tsx). The metric now shows absolute peak-to-trough variance (`Math.abs(peak - trough)`) formatted with `±` prefixing.
+- If Identity Coherence remained at 100%, displays `"Held stable throughout."`. If resilience variance was `<= 5%`, displays `"No significant variance recorded."` instead of mathematical zeroes.
+
+### 23. TypeScript Compilation Fixes
+- Removed unused prop `sessionDuration` from the `EnvironmentalPrescriptionProps` interface and destructuring arguments in [src/EnvironmentalPrescription.tsx](file:///d:/Codebase/Flo/src/EnvironmentalPrescription.tsx).
+- Removed the unused `sessionDuration` attribute pass from the `<EnvironmentalPrescription>` instantiation block in [src/CognitiveSimulator.tsx](file:///d:/Codebase/Flo/src/CognitiveSimulator.tsx).
+- Removed the unused `nearestArchetype` state declaration and its associated `setNearestArchetype` state update statement in [src/OnboardingQuestionnaire.tsx](file:///d:/Codebase/Flo/src/OnboardingQuestionnaire.tsx) to prevent TS6133 compiler errors.
+
+---
+
+## Onboarding Persistence, ExistentialDepth SVG, Telemetry Upgrades
+
+### 24. Onboarding LocalStorage Persistence
+- Modified [src/OnboardingQuestionnaire.tsx](file:///d:/Codebase/Flo/src/OnboardingQuestionnaire.tsx) `handleFinish` to persist both `snm_onboarded: 'true'` and `snm_profile: JSON.stringify({...})` to `localStorage` upon questionnaire completion. The profile object includes `sleepDebt`, `stimulationLevel`, `economicStress`, `physicalMovement`, `syntheticInteraction`, `socialPressure`, and a `timestamp` for future session-age tracking.
+
+### 25. Mount-Time Profile Loading & RECALIBRATE Link
+- Modified [src/CognitiveSimulator.tsx](file:///d:/Codebase/Flo/src/CognitiveSimulator.tsx):
+  - Added `currentInsight` state to capture the insight string from `ReflectionModal` and relay it to `EnvironmentalPrescription`.
+  - Added `profileLoaded` state that triggers a `"SUBJECT PROFILE LOADED"` emerald banner in the top header HUD for exactly 3 seconds on mount when a saved profile is found.
+  - Added a mount-time `useEffect` that, if `snm_onboarded` is set, reads `snm_profile` from `localStorage`, parses it, pre-populates all 6 MotionValue sliders (`stimulationLevel`, `sleepDebt`, `socialPressure`, `economicStress`, `physicalMovement`, `syntheticInteraction`), and derives initial system start scores (`attention`, `nervous`, `identity`, `agency`, `meaning`) from the loaded slider values.
+  - Extended `HeaderStatusProps` interface with `onRecalibrate: () => void` and `profileLoaded: boolean`.
+  - Added a hidden `"RECALIBRATE"` button to the top header bar (`opacity: 0.3`, full opacity on hover, `text-[8px]` monospace). Clicking it clears both `snm_onboarded` and `snm_profile` from `localStorage` and triggers `window.location.reload()`.
+  - Removed unused `generateInsight` import from the `ReflectionModal` import statement.
+
+### 26. ExistentialDepth SVG Well Rendering Fix
+- Rewrote [src/ExistentialDepth.tsx](file:///d:/Codebase/Flo/src/ExistentialDepth.tsx) completely:
+  - Set explicit container dimensions: `style={{ width: '100%', minHeight: '120px' }}`.
+  - Updated SVG attributes to `viewBox="0 0 200 160"` with explicit `width="100%"` and `height="160"`.
+  - Added a `<rect>` element with a `shaftRef` for the depth shaft. Width and x-position are derived values updated each `useAnimationFrame` tick:
+    - `shaftWidth = 40 + (smoothedMeaning / 100) * 100`
+    - `shaftX = 100 - shaftWidth / 2`
+  - Applied explicit fill/stroke colors: shaft fill `rgba(255,255,255,0.05)`, stroke `rgba(255,255,255,0.15)`.
+  - Radial gradient glow uses `rgba(239,159,39,0.4)` center transitioning to transparent.
+  - Removed the monologue text (`"What lies ahead?"`) and the `"QUESTIONING"` label entirely. Replaced with a single status word below the SVG:
+    - `meaningScore > 60` → `"GROUNDED"` (bold zinc)
+    - `meaningScore 30-60` → `"DRIFTING"` (amber)
+    - `meaningScore < 30` → `"VOID"` (pulsing rose)
+
+### 27. ArchetypeSelector Flow Probability Calculation Fix
+- Replaced `getFlowProbability` helper in [src/ArchetypeSelector.tsx](file:///d:/Codebase/Flo/src/ArchetypeSelector.tsx) with `calcFlowProbability`, a pure function that calculates flow probability strictly from each archetype's own target slider values:
+  - `nervousLoad = Math.min(100, config.stimulation * (1 + config.sleepDebt / 100 * 0.8))`
+  - `attention = Math.max(0, 100 - nervousLoad * 0.8)`
+  - `agency = Math.max(0, 30 + config.movement * 0.30 - config.economic * 0.30 - config.sleepDebt * 0.25)`
+  - `meaning = Math.max(0, 15 + config.movement * 0.40 - config.stimulation * 0.25)`
+  - Flow channel entrance: `attention > 75 && agency > 70 && 35 <= nervousLoad <= 65 && meaning > 60 && social < 40`.
+  - Depth scored as `min(100, ((attention - 75) / 25 * 30) + ((agency - 70) / 30 * 30) + (1 - abs(nervousLoad - 50) / 15) * 40)`.
+  - Expected results: Deep Flow ~65-75%, Sustainable High Performance ~45-55%, Recovery Cabin ~20-30%, high-load profiles 0%.
+
+### 28. Console Monitor Word-Wrap Fixes
+- Added `.console-monitor-entry` CSS class to [src/index.css](file:///d:/Codebase/Flo/src/index.css):
+  - `word-break: break-word` (prevents mid-word breaks unlike `break-all`).
+  - `overflow-wrap: break-word` for cross-browser safety.
+  - `white-space: pre-wrap` preserves whitespace while wrapping.
+  - `max-width: 100%` prevents overflow.
+- Modified `RealtimeLogs` in [src/CognitiveSimulator.tsx](file:///d:/Codebase/Flo/src/CognitiveSimulator.tsx):
+  - Increased console font size from `text-[9px]` to `text-[11px]` for improved readability.
+  - Changed `break-all` class on log entries to `console-monitor-entry`.
+  - Added `overflow-x-hidden` on the console container to clip horizontal overflow at the column edge.
+
+### 29. Environmental Prescription Diagnosis Insight Propagation
+- Modified [src/ReflectionModal.tsx](file:///d:/Codebase/Flo/src/ReflectionModal.tsx):
+  - Changed `onClose` callback prop type from `() => void` to `(insight: string) => void`.
+  - Updated the "UNDERSTOOD" button and backdrop click handlers to pass the computed `insight` string: `onClose(insight)`.
+- Modified [src/EnvironmentalPrescription.tsx](file:///d:/Codebase/Flo/src/EnvironmentalPrescription.tsx):
+  - Renamed `diagnosis: string` prop to `insight: string` in the interface and destructuring.
+  - Removed quotation marks wrapping the Section 1 text (it's system-generated analysis, not a citation).
+  - Text is styled in italics via existing `fontStyle: 'italic'`.
+- Modified [src/CognitiveSimulator.tsx](file:///d:/Codebase/Flo/src/CognitiveSimulator.tsx):
+  - Added `currentInsight` state variable.
+  - `ReflectionModal` `onClose` callback now captures `insightStr` from the modal and saves it to `currentInsight` state before opening the prescription.
+  - `EnvironmentalPrescription` receives `insight={currentInsight}` instead of recalculating `generateInsight(...)` inline.
+  - Removed the now-unused `generateInsight` import.
+
+---
+
 ## Verification Results
 
 ### TypeScript Compiler Check
@@ -169,6 +275,6 @@ I have successfully completed the implementation of the Cognitive Degradation UI
 - Ran `npm run build`.
 - Production bundle successfully generated:
   - `dist/index.html` (0.83 kB)
-  - `dist/assets/index-BFBYbmJ9.css` (31.75 kB)
-  - `dist/assets/index-G1S1p8dC.js` (421.59 kB)
-  - Build execution time: **989ms**
+  - `dist/assets/index-CRY4WISo.css` (36.34 kB)
+  - `dist/assets/index-fGjVVayR.js` (447.09 kB)
+  - Build execution time: **954ms**

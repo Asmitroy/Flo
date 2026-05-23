@@ -169,3 +169,11 @@ body.agency-paralyzed input[type="range"]::-webkit-slider-thumb {
   transition-delay: 400ms !important;
 }
 
+/* Console monitor log entry word wrap */
+.console-monitor-entry {
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  max-width: 100%;
+}
+

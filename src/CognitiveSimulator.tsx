@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { motion, AnimatePresence, useMotionValue, useTransform, MotionValue } from 'framer-motion';
+import { motion, AnimatePresence, useMotionValue, useTransform, MotionValue, animate } from 'framer-motion';
 import { 
   Volume2, 
   VolumeX, 
@@ -23,6 +23,8 @@ import { ArchetypeSelector } from './ArchetypeSelector';
 import { useNarrativeEvents, DESTABILIZERS } from './NarrativeEventEngine';
 import { useTimeCompression } from './TimeCompressionEngine';
 import ReflectionModal, { type SystemScores, type SliderSnapshot } from './ReflectionModal';
+import { OnboardingQuestionnaire } from './OnboardingQuestionnaire';
+import { EnvironmentalPrescription } from './EnvironmentalPrescription';
 
 // Eerie glitch glyphs for character substitution
 const GLYPHS = ['█', '░', '▓', '▒', 'Ø', '§', 'Δ', '¥', '0', '1', 'æ', '?', '!', '#', '*', 'α', 'β', 'λ', '†', '‡', 'µ', '¶', '▰', '▱', '◊', '◈'];
@@ -389,6 +391,7 @@ interface HudTelemetryProps {
   identityCoherence: MotionValue<number>;
   agencyScore: MotionValue<number>;
   meaningScore: MotionValue<number>;
+  flowProbability: MotionValue<number>;
   systemStartScores: SystemScores;
   isRebooting: boolean;
   isCompressionActive?: boolean;
@@ -400,6 +403,7 @@ const HudTelemetry = React.memo(({
   identityCoherence,
   agencyScore,
   meaningScore,
+  flowProbability,
   systemStartScores,
   isRebooting,
   isCompressionActive = false,
@@ -409,20 +413,23 @@ const HudTelemetry = React.memo(({
   const [idnScore, setIdnScore] = useState(identityCoherence.get());
   const [agcScore, setAgcScore] = useState(agencyScore.get());
   const [mngScore, setMngScore] = useState(meaningScore.get());
+  const [flowProbVal, setFlowProbVal] = useState(flowProbability.get());
 
   useEffect(() => {
     const unsubNrv = nervousSystemLoad.on("change", (v) => setNrvScore(v));
     const unsubIdn = identityCoherence.on("change", (v) => setIdnScore(v));
     const unsubAgc = agencyScore.on("change", (v) => setAgcScore(v));
     const unsubMng = meaningScore.on("change", (v) => setMngScore(v));
+    const unsubFlow = flowProbability.on("change", (v) => setFlowProbVal(v));
 
     return () => {
       unsubNrv();
       unsubIdn();
       unsubAgc();
       unsubMng();
+      unsubFlow();
     };
-  }, [nervousSystemLoad, identityCoherence, agencyScore, meaningScore]);
+  }, [nervousSystemLoad, identityCoherence, agencyScore, meaningScore, flowProbability]);
 
   const attScore = 100 - nrvScore;
   const nrvWellness = 100 - nrvScore;
@@ -531,6 +538,28 @@ const HudTelemetry = React.memo(({
             );
           })}
 
+          {/* FLOW PROBABILITY Indicator */}
+          <div className="pt-2.5 border-t border-zinc-900/60 mt-3.5">
+            <div className="flex justify-between text-[10px] font-mono text-zinc-500 mb-1">
+              <span>FLOW PROBABILITY</span>
+              <span className={flowProbVal > 0.6 ? 'text-[#F5C842] font-bold' : 'text-zinc-300'}>
+                {isRebooting ? "0%" : `${Math.round(flowProbVal * 100)}%`}
+              </span>
+            </div>
+            <div className="w-full bg-zinc-900/60 h-1.5 rounded overflow-hidden">
+              <motion.div 
+                className="h-full rounded"
+                animate={{ width: `${Math.max(2, isRebooting ? 0 : flowProbVal * 100)}%` }}
+                transition={{ duration: 0.3 }}
+                style={{ backgroundColor: '#F5C842' }}
+              />
+            </div>
+          </div>
+
+          <div className="pt-2 border-t border-zinc-900/40 mt-3 pb-2">
+            <AgencyMeter agencyScore={agencyScore} />
+          </div>
+
           <div className="pt-2">
             <div className="bg-black/40 border border-zinc-900 rounded p-3 text-[10px] font-mono space-y-1.5 leading-relaxed text-zinc-500">
               <div className="flex items-center space-x-1.5 text-zinc-400">
@@ -567,6 +596,7 @@ interface CognitiveWeatherProps {
   identity: MotionValue<number>;
   agency: MotionValue<number>;
   meaning: MotionValue<number>;
+  flowProbability: MotionValue<number>;
 }
 
 const CognitiveWeather = React.memo(({
@@ -574,9 +604,11 @@ const CognitiveWeather = React.memo(({
   nervousLoad,
   identity,
   agency,
-  meaning
+  meaning,
+  flowProbability
 }: CognitiveWeatherProps) => {
-  const [weather, setWeather] = useState<'clear' | 'overcast' | 'storm' | 'void'>('clear');
+  const [weather, setWeather] = useState<'clear' | 'overcast' | 'storm' | 'void' | 'flow'>('clear');
+  const [flowProbVal, setFlowProbVal] = useState(flowProbability.get());
 
   useEffect(() => {
     const evaluate = () => {
@@ -585,20 +617,47 @@ const CognitiveWeather = React.memo(({
       const idn = identity.get();
       const agc = agency.get();
       const mng = meaning.get();
+      const fp = flowProbability.get();
 
-      if (mng < 30 && agc < 30) {
+      // Flow overrides clear/overcast/storm if probability is high
+      if (fp > 0.6) {
+        return 'flow';
+      }
+
+      // VOID: meaning < 20 AND agency < 30
+      if (mng < 20 && agc < 30) {
         return 'void';
       }
-      if (att < 40 || nrv > 70 || idn < 40 || agc < 40 || mng < 40) {
+      
+      const attWellness = att;
+      const nrvWellness = 100 - nrv;
+      const idnWellness = idn;
+      const agcWellness = agc;
+      const mngWellness = mng;
+
+      // STORM: any system < 40 OR nervousLoad > 70
+      if (attWellness < 40 || nrvWellness < 40 || idnWellness < 40 || agcWellness < 40 || mngWellness < 40 || nrv > 70) {
         return 'storm';
       }
-      if (att <= 70 || nrv >= 30 || idn <= 70 || agc <= 70 || mng <= 70) {
+      
+      // OVERCAST: any system 40-70 OR nervousLoad 30-70
+      if (
+        (attWellness >= 40 && attWellness <= 70) ||
+        (nrvWellness >= 30 && nrvWellness <= 70) ||
+        (idnWellness >= 40 && idnWellness <= 70) ||
+        (agcWellness >= 40 && agcWellness <= 70) ||
+        (mngWellness >= 40 && mngWellness <= 70) ||
+        (nrv >= 30 && nrv <= 70)
+      ) {
         return 'overcast';
       }
+      
+      // CLEAR: nervousLoad < 30 AND all systems > 70
       return 'clear';
     };
 
     const updateWeather = () => {
+      setFlowProbVal(flowProbability.get());
       const nextWeather = evaluate();
       setWeather(prev => {
         if (prev !== nextWeather) return nextWeather;
@@ -611,6 +670,7 @@ const CognitiveWeather = React.memo(({
     const unsubIdn = identity.on('change', updateWeather);
     const unsubAgc = agency.on('change', updateWeather);
     const unsubMng = meaning.on('change', updateWeather);
+    const unsubFlow = flowProbability.on('change', updateWeather);
 
     updateWeather();
 
@@ -620,88 +680,197 @@ const CognitiveWeather = React.memo(({
       unsubIdn();
       unsubAgc();
       unsubMng();
+      unsubFlow();
     };
-  }, [attention, nervousLoad, identity, agency, meaning]);
+  }, [attention, nervousLoad, identity, agency, meaning, flowProbability]);
+
+  const config = {
+    clear: {
+      color: '#6B8FE8',
+      opacity: [0.35, 0.48, 0.60],
+      radii: [35, 60, 85],
+      duration: 3,
+      ease: "easeInOut",
+      scale: [0.95, 1.05, 0.95],
+      jitter: false,
+    },
+    overcast: {
+      color: '#EF9F27',
+      opacity: [0.55, 0.68, 0.80],
+      radii: [22, 40, 58], // compressed radii
+      duration: 1.5, // double pulse frequency
+      ease: "easeInOut",
+      scale: [0.95, 1.05, 0.95],
+      jitter: false,
+    },
+    storm: {
+      color: '#E24B4A',
+      opacity: [0.75, 0.85, 0.90],
+      radii: [30, 55, 80],
+      duration: 0.3, // oscillates rapidly
+      ease: "linear",
+      scale: [0.9, 1.1, 0.9],
+      jitter: true,
+    },
+    void: {
+      color: 'rgba(255,255,255,0)',
+      opacity: [0, 0, 0],
+      radii: [35, 60, 85],
+      duration: 2,
+      ease: "easeInOut",
+      scale: [1, 1, 1],
+      jitter: false,
+    },
+    flow: {
+      color: '#F5C842',
+      opacity: [[0, 0.6, 0], [0, 0.4, 0], [0, 0.25, 0]],
+      radii: [35, 60, 85],
+      duration: 3.5,
+      ease: "easeOut",
+      scale: [0.6, 1.4],
+      jitter: false,
+    }
+  }[weather];
+
+  const ringIndices = [0, 1, 2];
 
   return (
-    <div className="absolute top-8 pointer-events-none select-none flex flex-col items-center justify-center w-full h-36">
-      <div className="relative w-24 h-24 flex items-center justify-center">
-        <svg viewBox="0 0 100 100" className="w-20 h-20 overflow-visible">
-          <circle cx="50" cy="50" r="1.5" fill={weather === 'void' ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.7)'} />
+    <div className="pointer-events-none select-none flex flex-col items-center justify-center w-full h-full relative p-4">
+      <div className="relative w-72 h-72 flex items-center justify-center">
+        <svg viewBox="0 0 200 200" className="w-64 h-64 overflow-visible">
+          {/* Outer glows and filters for premium aesthetics */}
+          <defs>
+            <filter id="weather-glow" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="8" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+          </defs>
+
+          {/* Center dot */}
+          <motion.circle
+            cx="100"
+            cy="100"
+            animate={{
+              r: weather === 'void' ? 4 : 1.5,
+              fill: weather === 'void' ? '#ffffff' : (weather === 'storm' ? '#E24B4A' : (weather === 'flow' ? '#F5C842' : '#FFFFFF')),
+              opacity: weather === 'void' ? 0.4 : 0.7
+            }}
+            transition={{ duration: 1.5 }}
+          />
           
-          {weather !== 'void' && (
-            <>
-              <motion.circle
-                cx="50"
-                cy="50"
-                r={weather === 'clear' ? 25 : (weather === 'overcast' ? 30 : 15)}
-                fill="none"
-                stroke={weather === 'clear' ? 'rgba(129, 140, 248, 0.35)' : (weather === 'overcast' ? 'rgba(245, 158, 11, 0.35)' : 'rgba(239, 68, 68, 0.55)')}
-                strokeWidth="1"
-                animate={weather === 'clear' ? {
-                  scale: [1, 1.05, 1],
-                  opacity: [0.3, 0.5, 0.3]
-                } : (weather === 'overcast' ? {
-                  scale: [1, 1.02, 1],
-                  opacity: [0.25, 0.4, 0.25]
-                } : {
-                  scale: [1, 0.5, 1.3, 1],
-                  opacity: [0.6, 0.2, 0.8, 0.6]
-                })}
-                transition={{
-                  duration: weather === 'clear' ? 4 : (weather === 'overcast' ? 5 : 0.8),
-                  repeat: Infinity,
-                  ease: "easeInOut"
-                }}
-              />
-              <motion.circle
-                cx={weather === 'overcast' ? 49 : 50}
-                cy={weather === 'overcast' ? 51 : 50}
-                r={weather === 'clear' ? 50 : (weather === 'overcast' ? 45 : 30)}
-                fill="none"
-                stroke={weather === 'clear' ? 'rgba(129, 140, 248, 0.25)' : (weather === 'overcast' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(239, 68, 68, 0.45)')}
-                strokeWidth="0.8"
-                animate={weather === 'clear' ? {
-                  scale: [1, 1.08, 1],
-                  opacity: [0.2, 0.4, 0.2]
-                } : (weather === 'overcast' ? {
-                  scale: [1, 1.04, 1],
-                  opacity: [0.15, 0.3, 0.15]
-                } : {
-                  scale: [1.2, 0.4, 1.1, 1.2],
-                  opacity: [0.7, 0.1, 0.9, 0.7]
-                })}
-                transition={{
-                  duration: weather === 'clear' ? 6 : (weather === 'overcast' ? 7 : 0.6),
-                  repeat: Infinity,
-                  ease: "easeInOut"
-                }}
-              />
-              <motion.circle
-                cx={weather === 'overcast' ? 51 : 50}
-                cy={weather === 'overcast' ? 49 : 50}
-                r={weather === 'clear' ? 75 : (weather === 'overcast' ? 60 : 45)}
-                fill="none"
-                stroke={weather === 'clear' ? 'rgba(129, 140, 248, 0.15)' : (weather === 'overcast' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.35)')}
-                strokeWidth="0.6"
-                animate={weather === 'clear' ? {
-                  scale: [1, 1.1, 1],
-                  opacity: [0.1, 0.25, 0.1]
-                } : (weather === 'overcast' ? {
-                  scale: [1, 1.06, 1],
-                  opacity: [0.1, 0.2, 0.1]
-                } : {
-                  scale: [1.5, 0.3, 1.2, 1.5],
-                  opacity: [0.8, 0.05, 0.95, 0.8]
-                })}
-                transition={{
-                  duration: weather === 'clear' ? 8 : (weather === 'overcast' ? 9 : 0.4),
-                  repeat: Infinity,
-                  ease: "easeInOut"
-                }}
-              />
-            </>
-          )}
+          {ringIndices.map((ringIdx) => {
+            const baseRadius = config.radii[ringIdx];
+            return (
+              <React.Fragment key={ringIdx}>
+                {/* Cyan Chromatic Aberration Underlayer for Storm */}
+                {weather === 'storm' && (
+                  <>
+                    <motion.circle
+                      cx="100"
+                      cy="100"
+                      r={baseRadius}
+                      fill="none"
+                      stroke="#00FFFF"
+                      strokeWidth="1"
+                      opacity="0.45"
+                      animate={{
+                        scale: [0.9, 1.1, 0.9],
+                        x: [3, 1, 5, 2, 4, 1, 3],
+                        y: [-1, 2, -2, 0, 1, -1, 0]
+                      }}
+                      transition={{
+                        scale: { duration: 0.3, repeat: Infinity, ease: "linear", delay: ringIdx * 0.1 },
+                        x: { duration: 0.2, repeat: Infinity, ease: "linear" },
+                        y: { duration: 0.2, repeat: Infinity, ease: "linear" }
+                      }}
+                    />
+                    <motion.circle
+                      cx="100"
+                      cy="100"
+                      r={baseRadius}
+                      fill="none"
+                      stroke="#00FFFF"
+                      strokeWidth="1"
+                      opacity="0.45"
+                      animate={{
+                        scale: [0.9, 1.1, 0.9],
+                        x: [-3, -5, -2, -4, -1, -3],
+                        y: [1, -2, 2, 0, -1, 1, 0]
+                      }}
+                      transition={{
+                        scale: { duration: 0.3, repeat: Infinity, ease: "linear", delay: ringIdx * 0.1 },
+                        x: { duration: 0.2, repeat: Infinity, ease: "linear" },
+                        y: { duration: 0.2, repeat: Infinity, ease: "linear" }
+                      }}
+                    />
+                  </>
+                )}
+
+                {/* Primary Ring */}
+                <motion.circle
+                  cx="100"
+                  cy="100"
+                  fill="none"
+                  strokeWidth={weather === 'storm' ? "1.5" : "1"}
+                  filter="url(#weather-glow)"
+                  style={{
+                    transformOrigin: "100px 100px"
+                  }}
+                  animate={{
+                    stroke: config.color,
+                    r: config.radii[ringIdx],
+                    opacity: config.opacity[ringIdx] as any,
+                    scale: config.scale,
+                    rotate: weather === 'flow' ? [0, 360] : 0,
+                    x: config.jitter ? [0, -2, 2, -1, 1, -2, 2, 0] : 0,
+                    y: config.jitter ? [0, 2, -2, 1, -2, 1, -2, 0] : 0,
+                  }}
+                  transition={{
+                    stroke: { duration: 0.5 },
+                    r: { duration: 0.5, ease: "easeOut" },
+                    opacity: { duration: 0.5 },
+                    scale: {
+                      duration: config.duration,
+                      repeat: Infinity,
+                      ease: config.ease as any,
+                      delay: ringIdx * 1.2 // Stagger radiating expansion
+                    },
+                    rotate: weather === 'flow' ? {
+                      duration: 20 + ringIdx * 10,
+                      repeat: Infinity,
+                      ease: "linear"
+                    } : { duration: 0.5 },
+                    x: config.jitter ? { duration: 0.2, repeat: Infinity, ease: "linear" } : { duration: 0.5 },
+                    y: config.jitter ? { duration: 0.2, repeat: Infinity, ease: "linear" } : { duration: 0.5 }
+                  }}
+                />
+              </React.Fragment>
+            );
+          })}
+
+          {/* Thin progress arc around the outermost ring for Flow Depth */}
+          <motion.circle
+            cx="100"
+            cy="100"
+            r="88"
+            fill="none"
+            stroke="#F5C842"
+            strokeWidth="1.2"
+            strokeLinecap="round"
+            transform="rotate(-90 100 100)"
+            style={{
+              transformOrigin: "100px 100px"
+            }}
+            animate={{
+              strokeDasharray: 552.92,
+              strokeDashoffset: 552.92 * (1 - flowProbVal),
+              opacity: weather === 'flow' ? 0.8 : 0
+            }}
+            transition={{
+              opacity: { duration: 0.5 },
+              strokeDashoffset: { duration: 0.3, ease: "easeOut" }
+            }}
+          />
         </svg>
       </div>
 
@@ -709,12 +878,15 @@ const CognitiveWeather = React.memo(({
         weather === 'clear' ? 'text-indigo-400' :
         weather === 'overcast' ? 'text-amber-500/80' :
         weather === 'storm' ? 'text-rose-500 animate-pulse' :
+        weather === 'void' ? 'text-rose-950 font-bold animate-pulse' :
+        weather === 'flow' ? 'text-[#F5C842] font-bold' :
         'text-zinc-600'
       }`}>
         {weather === 'clear' && "COGNITIVE CLARITY"}
         {weather === 'overcast' && "ELEVATED LOAD"}
         {weather === 'storm' && "COGNITIVE STORM"}
         {weather === 'void' && "DISSOCIATIVE STATE"}
+        {weather === 'flow' && "FLOW STATE ACTIVE"}
       </span>
     </div>
   );
@@ -833,10 +1005,11 @@ CriticalAlert.displayName = 'CriticalAlert';
 interface RealtimeLogsProps {
   logs: typeof INITIAL_LOGS;
   nervousSystemLoad: MotionValue<number>;
+  meaningScore: MotionValue<number>;
   isRebooting: boolean;
 }
 
-const RealtimeLogs = React.memo(({ logs, nervousSystemLoad, isRebooting }: RealtimeLogsProps) => {
+const RealtimeLogs = React.memo(({ logs, nervousSystemLoad, meaningScore, isRebooting }: RealtimeLogsProps) => {
   const [currentLoad, setCurrentLoad] = useState(nervousSystemLoad.get());
 
   useEffect(() => {
@@ -847,7 +1020,12 @@ const RealtimeLogs = React.memo(({ logs, nervousSystemLoad, isRebooting }: Realt
   return (
     <section className="lg:col-span-1 bg-zinc-950/40 border border-zinc-900/60 rounded-lg p-4 backdrop-blur-lg flex flex-col justify-between select-none h-full min-h-[640px]">
       <div className="flex flex-col h-full space-y-4 overflow-hidden">
-        {/* Top: Compact Attention Graph */}
+        {/* Top: Existential Depth */}
+        <div className="border-b border-zinc-900/60 pb-3 flex flex-col items-center">
+          <ExistentialDepth meaningScore={meaningScore} />
+        </div>
+
+        {/* Middle: Compact Attention Graph */}
         <div className="border-b border-zinc-900/60 pb-3 flex flex-col items-center">
           <div className="text-[9px] font-mono text-zinc-500 uppercase tracking-widest mb-1">
             Attention Map
@@ -866,7 +1044,7 @@ const RealtimeLogs = React.memo(({ logs, nervousSystemLoad, isRebooting }: Realt
             </h3>
           </div>
 
-          <div className="flex-1 font-mono text-[9px] space-y-2 overflow-hidden">
+          <div className="flex-1 font-mono text-[11px] space-y-2 overflow-hidden overflow-x-hidden">
             <AnimatePresence initial={false}>
               {logs.map((log) => {
                 let textCol = "text-zinc-500";
@@ -891,7 +1069,7 @@ const RealtimeLogs = React.memo(({ logs, nervousSystemLoad, isRebooting }: Realt
                     initial={{ opacity: 0, x: 10 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0 }}
-                    className={`${textCol} break-all leading-normal`}
+                    className={`${textCol} console-monitor-entry leading-normal`}
                   >
                     &gt; {logText}
                   </motion.div>
@@ -924,6 +1102,8 @@ interface HeaderStatusProps {
   sessionDuration: number;
   canRunAnalysis: boolean;
   onRunAnalysis: () => void;
+  onRecalibrate: () => void;
+  profileLoaded: boolean;
 }
 
 const HeaderStatus = React.memo(({
@@ -935,6 +1115,8 @@ const HeaderStatus = React.memo(({
   sessionDuration,
   canRunAnalysis,
   onRunAnalysis,
+  onRecalibrate,
+  profileLoaded,
 }: HeaderStatusProps) => {
   const durationLabel = React.useMemo(() => {
     const m = Math.floor(sessionDuration / 60);
@@ -982,6 +1164,15 @@ const HeaderStatus = React.memo(({
             PORT 08 // ADAPTIVE HEURISTICS
           </p>
         </div>
+
+        {/* Profile Loaded Banner */}
+        {profileLoaded && (
+          <div className="ml-4 px-3 py-1 border border-emerald-900/40 bg-emerald-950/20 animate-pulse">
+            <span className="font-mono text-[9px] text-emerald-500 tracking-widest uppercase font-bold">
+              SUBJECT PROFILE LOADED
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center space-x-6">
@@ -1030,6 +1221,15 @@ const HeaderStatus = React.memo(({
             <RefreshCw className={`w-3.5 h-3.5 ${isRebooting ? 'animate-spin' : ''}`} />
             <span className="text-[10px] font-mono font-bold hidden sm:inline uppercase tracking-wider">Reset</span>
           </button>
+
+          {/* Recalibrate Link */}
+          <button
+            onClick={onRecalibrate}
+            className="font-mono text-[8px] text-zinc-600 tracking-widest uppercase cursor-pointer opacity-30 hover:opacity-100 transition-opacity duration-300 bg-transparent border-none p-1"
+            title="Clear profile and restart onboarding"
+          >
+            RECALIBRATE
+          </button>
         </div>
       </div>
     </header>
@@ -1054,6 +1254,39 @@ export default function CognitiveSimulator() {
 
   const attentionScore = useTransform(nervousSystemLoad, (load) => 100 - load);
 
+  const flowProbability = useTransform(
+    [attentionScore, agencyScore, nervousSystemLoad, meaningScore, socialPressure],
+    (values) => {
+      const [att, agency, load, meaning, social] = values as number[];
+      const inFlowChannel = (
+        att > 35 && // derived from load <= 65
+        agency > 40 &&
+        load >= 35 && load <= 65 &&
+        meaning > 45 &&
+        social < 40
+      );
+
+      if (!inFlowChannel) return 0;
+
+      // How deep in the channel are we?
+      const attentionContrib = (att - 35) / 65 * 0.3;
+      const agencyContrib = (agency - 40) / 60 * 0.3;
+      const loadContrib = 1 - Math.abs(load - 50) / 15 * 0.4;
+      return Math.min(1, Math.max(0, attentionContrib + agencyContrib + loadContrib));
+    }
+  );
+
+  const [isOnboarded, setIsOnboarded] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('snm_onboarded') === 'true';
+    }
+    return true;
+  });
+
+  const [showPrescription, setShowPrescription] = useState<boolean>(false);
+  const [currentInsight, setCurrentInsight] = useState<string>('');
+  const [profileLoaded, setProfileLoaded] = useState<boolean>(false);
+
   const [isMuted, setIsMuted] = useState<boolean>(true);
   const [isRebooting, setIsRebooting] = useState<boolean>(false);
   const [isReady, setIsReady] = useState<boolean>(false);
@@ -1075,6 +1308,44 @@ export default function CognitiveSimulator() {
   const [sessionEventsHistory, setSessionEventsHistory] = useState<{ name: string; category: 'destabilizer' | 'stabilizer' }[]>([]);
   
   const sessionPeakLoad = useRef<number>(1);
+
+  // Load saved profile from localStorage on mount
+  useEffect(() => {
+    if (isOnboarded && typeof window !== 'undefined') {
+      const profileStr = localStorage.getItem('snm_profile');
+      if (profileStr) {
+        try {
+          const profile = JSON.parse(profileStr);
+          stimulationLevel.set(profile.stimulationLevel ?? 1);
+          sleepDebt.set(profile.sleepDebt ?? 0);
+          socialPressure.set(profile.socialPressure ?? 20);
+          economicStress.set(profile.economicStress ?? 30);
+          physicalMovement.set(profile.physicalMovement ?? 50);
+          syntheticInteraction.set(profile.syntheticInteraction ?? 0);
+
+          // Calculate initial system scores from loaded profile
+          const load = Math.min(100, (profile.stimulationLevel ?? 1) * (1 + ((profile.sleepDebt ?? 0) * 0.015)));
+          const attention = 100 - load;
+          const agency = Math.max(0, Math.min(100, 30 + ((profile.physicalMovement ?? 50) * 0.30) - ((profile.economicStress ?? 30) * 0.30) - ((profile.sleepDebt ?? 0) * 0.25) - (load * 0.15)));
+          const meaning = Math.max(0, Math.min(100, 15 + ((profile.physicalMovement ?? 50) * 0.40) - ((profile.stimulationLevel ?? 1) * 0.25) + (100 - (profile.syntheticInteraction ?? 0)) * 0.15 - ((profile.economicStress ?? 30) * 0.15) - ((profile.sleepDebt ?? 0) * 0.10)));
+
+          setSystemStartScores({
+            attention,
+            nervous: load,
+            identity: Math.max(0, 100 - (profile.syntheticInteraction ?? 0)),
+            agency,
+            meaning
+          });
+
+          setProfileLoaded(true);
+          setTimeout(() => setProfileLoaded(false), 3000);
+        } catch (_e) {
+          // Invalid JSON, ignore
+        }
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Track peak load during the session
   useEffect(() => {
@@ -1220,29 +1491,30 @@ export default function CognitiveSimulator() {
       const synth = syntheticInteraction.get();
       const econ = economicStress.get();
       const phys = physicalMovement.get();
-      const soc = socialPressure.get();
 
       const targetLoad = Math.min(100, stim * (1 + (sleep * 0.015)));
       const targetCoherence = Math.max(0, 100 - synth);
 
-      // Social pressure non-linear calculation: moderate pressure boosts, high pressure crashes
-      let socialEffect: number;
-      if (soc <= 50) {
-        socialEffect = 0.4 * soc;
-      } else {
-        socialEffect = 20 - 1.4 * (soc - 50);
-      }
+      const currentLoad = nervousSystemLoad.get();
 
-      const targetAgency = Math.max(0, Math.min(100, 50 - 0.35 * sleep - 0.35 * econ + 0.30 * phys + socialEffect));
+      const targetAgency = Math.max(0, Math.min(100,
+        30
+        + (phys * 0.30)
+        - (econ * 0.30)
+        - (sleep * 0.25)
+        - (currentLoad * 0.15)
+      ));
 
-      // Meaning/Existential Stability calculations
-      const socialConnection = 100 - synth; // social connection (positive) -> inverse synthetic interaction
-      const sleepVal = 100 - sleep; // sleep (positive) -> inverse sleep debt
-      const targetMeaning = Math.max(0, Math.min(100, 30 - 0.25 * stim - 0.25 * sleepVal + 0.3 * socialConnection + 0.3 * phys - 0.25 * econ));
+      const targetMeaning = Math.max(0, Math.min(100,
+        15
+        + (phys * 0.40)
+        - (stim * 0.25)
+        + (100 - synth) * 0.15
+        - (econ * 0.15)
+        - (sleep * 0.10)
+      ));
 
       const driftStep = 1 * driftStepMultiplier;
-
-      const currentLoad = nervousSystemLoad.get();
       if (currentLoad < targetLoad) {
         nervousSystemLoad.set(Math.min(targetLoad, currentLoad + driftStep));
       } else if (currentLoad > targetLoad) {
@@ -1540,6 +1812,71 @@ export default function CognitiveSimulator() {
     setSessionEventsHistory([]);
   };
 
+  const handleOnboardingComplete = useCallback((values: {
+    sleepDebt: number;
+    stimulationLevel: number;
+    socialPressure: number;
+    economicStress: number;
+    physicalMovement: number;
+    syntheticInteraction: number;
+  }) => {
+    sleepDebt.set(values.sleepDebt);
+    stimulationLevel.set(values.stimulationLevel);
+    socialPressure.set(values.socialPressure);
+    economicStress.set(values.economicStress);
+    physicalMovement.set(values.physicalMovement);
+    syntheticInteraction.set(values.syntheticInteraction);
+
+    // Mapped load and starts
+    const load = Math.min(100, values.stimulationLevel * (1 + (values.sleepDebt * 0.015)));
+    const attention = 100 - load;
+    const agency = Math.max(0, Math.min(100, 30 + (values.physicalMovement * 0.30) - (values.economicStress * 0.30) - (values.sleepDebt * 0.25) - (load * 0.15)));
+    const meaning = Math.max(0, Math.min(100, 15 + (values.physicalMovement * 0.40) - (values.stimulationLevel * 0.25) + (100 - values.syntheticInteraction) * 0.15 - (values.economicStress * 0.15) - (values.sleepDebt * 0.10)));
+
+    setSystemStartScores({
+      attention,
+      nervous: load,
+      identity: Math.max(0, 100 - values.syntheticInteraction),
+      agency,
+      meaning
+    });
+
+    setIsOnboarded(true);
+  }, [sleepDebt, stimulationLevel, socialPressure, economicStress, physicalMovement, syntheticInteraction]);
+
+  const handleApplyPrescriptionTargets = useCallback((targets: {
+    stimulation?: number;
+    sleepDebt?: number;
+    socialPressure?: number;
+    economicStress?: number;
+    physicalMovement?: number;
+    syntheticInteraction?: number;
+  }) => {
+    const duration = 3;
+    const ease = "linear";
+
+    if (targets.stimulation !== undefined) {
+      animate(stimulationLevel, targets.stimulation, { duration, ease });
+    }
+    if (targets.sleepDebt !== undefined) {
+      animate(sleepDebt, targets.sleepDebt, { duration, ease });
+    }
+    if (targets.socialPressure !== undefined) {
+      animate(socialPressure, targets.socialPressure, { duration, ease });
+    }
+    if (targets.economicStress !== undefined) {
+      animate(economicStress, targets.economicStress, { duration, ease });
+    }
+    if (targets.physicalMovement !== undefined) {
+      animate(physicalMovement, targets.physicalMovement, { duration, ease });
+    }
+    if (targets.syntheticInteraction !== undefined) {
+      animate(syntheticInteraction, targets.syntheticInteraction, { duration, ease });
+    }
+
+    setActiveArchetype(null);
+  }, [stimulationLevel, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction]);
+
   const handleReboot = () => {
     if (isRebooting) return;
     setIsRebooting(true);
@@ -1606,7 +1943,7 @@ export default function CognitiveSimulator() {
     if (load <= 15) return '0px';
     return `${((load - 15) / 85) * 3.2}px`;
   });
-  
+
   const textFilter = useTransform(blurAmount, (blur) => `blur(${blur})`);
 
   if (!isReady) {
@@ -1636,7 +1973,7 @@ export default function CognitiveSimulator() {
 
           <div className="text-left font-mono text-[11px] text-zinc-400 leading-relaxed border border-zinc-900 bg-black/60 p-4 rounded mb-6 h-32 overflow-hidden select-none">
             <p className="text-zinc-600">&gt; BOOTING STACK...</p>
-            <p className="text-zinc-600">&gt; CONNECTING INTERFACE BRIDGE...</p>
+            <p className="text-zinc-650">&gt; CONNECTING INTERFACE BRIDGE...</p>
             <p className="text-indigo-400/80">&gt; REQUIRES USER CONFIRMATION & SYNAPSE INITIALIZATION</p>
             <p className="text-rose-400/70 animate-pulse">&gt; WARNING: HIGH LEVELS OF ALGORITHMIC STIMULATION CAN INDUCE SEVERE DISSOCIATION EFFECT</p>
           </div>
@@ -1645,12 +1982,18 @@ export default function CognitiveSimulator() {
             whileHover={{ scale: 1.02, borderColor: 'rgba(99, 102, 241, 0.6)' }}
             whileTap={{ scale: 0.98 }}
             onClick={handleStart}
-            className="w-full py-3 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 font-display text-sm tracking-widest uppercase border border-indigo-500/40 rounded transition-colors duration-200 cursor-pointer shadow-lg shadow-indigo-950/20"
+            className="w-full py-3 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-350 font-display text-sm tracking-widest uppercase border border-indigo-500/40 rounded transition-colors duration-200 cursor-pointer shadow-lg shadow-indigo-950/20"
           >
             Initialize Synapse
           </motion.button>
         </motion.div>
       </div>
+    );
+  }
+
+  if (!isOnboarded) {
+    return (
+      <OnboardingQuestionnaire onComplete={handleOnboardingComplete} />
     );
   }
 
@@ -1694,6 +2037,12 @@ export default function CognitiveSimulator() {
         sessionDuration={sessionDuration}
         canRunAnalysis={sessionDuration >= 60}
         onRunAnalysis={() => setShowReflection(true)}
+        onRecalibrate={() => {
+          localStorage.removeItem('snm_onboarded');
+          localStorage.removeItem('snm_profile');
+          window.location.reload();
+        }}
+        profileLoaded={profileLoaded}
       />
 
       {/* Main Spatial Grid Workspace */}
@@ -1705,6 +2054,7 @@ export default function CognitiveSimulator() {
           identityCoherence={identityCoherence}
           agencyScore={agencyScore}
           meaningScore={meaningScore}
+          flowProbability={flowProbability}
           systemStartScores={systemStartScores}
           isRebooting={isRebooting} 
           isCompressionActive={isCompressionActive}
@@ -1714,22 +2064,24 @@ export default function CognitiveSimulator() {
         {/* Center Panel - The Core Experiment */}
         <section className="col-span-1 lg:col-span-4 flex flex-col justify-between items-center bg-zinc-950/20 border border-zinc-900/60 rounded-lg p-6 backdrop-blur-sm relative">
           
-          {/* Cognitive Weather visualizer */}
-          <CognitiveWeather 
-            attention={attentionScore}
-            nervousLoad={nervousSystemLoad}
-            identity={identityCoherence}
-            agency={agencyScore}
-            meaning={meaningScore}
-          />
+          {/* Cognitive Weather visualizer (takes full width, centered) */}
+          <div className="w-full flex-1 flex items-center justify-center relative min-h-[280px]">
+            <CognitiveWeather 
+              attention={attentionScore}
+              nervousLoad={nervousSystemLoad}
+              identity={identityCoherence}
+              agency={agencyScore}
+              meaning={meaningScore}
+              flowProbability={flowProbability}
+            />
+          </div>
 
-          {/* Symmetrical 3-Column Layout: Text Block, Agency Meter, & Existential Depth */}
-          <div className="w-full flex-1 grid grid-cols-1 md:grid-cols-12 gap-6 items-center my-12 max-w-[80rem] min-h-[460px]">
-            {/* Column 1: Text Block */}
-            <div className="flex items-center justify-start h-full px-4 select-text md:col-span-6 relative">
+          {/* Unified Center Layout containing Cognitive State Label & Identity Text Block */}
+          <div className="w-full max-w-xl flex flex-col space-y-6 relative pb-6">
+            <div className="relative w-full z-10">
               <IdentityCore coherence={identityCoherence} />
 
-              <div className="flex flex-col space-y-6 max-w-md relative z-10 w-full">
+              <div className="flex flex-col space-y-4 relative z-20 w-full text-center">
                 {/* Dynamic Title and Subtitle with Crossfade transition */}
                 <AnimatePresence mode="wait">
                   <motion.div
@@ -1738,12 +2090,12 @@ export default function CognitiveSimulator() {
                     animate={{ opacity: 1, filter: "blur(0px)" }}
                     exit={{ opacity: 0, filter: "blur(10px)" }}
                     transition={{ duration: 1.5, ease: "easeInOut" }}
-                    className="space-y-2 border-b border-zinc-900/40 pb-4 select-none"
+                    className="space-y-2 border-b border-zinc-900/40 pb-3 select-none"
                   >
-                    <h1 className="font-display text-lg tracking-wider text-zinc-100 uppercase font-extrabold">
+                    <h1 className="font-display text-sm tracking-wider text-zinc-100 uppercase font-extrabold text-center">
                       {quadrant.title}
                     </h1>
-                    <p className="font-mono text-[9px] text-zinc-500 leading-normal uppercase tracking-wide">
+                    <p className="font-mono text-[9px] text-zinc-500 leading-normal uppercase tracking-wide text-center">
                       {quadrant.subtitle}
                     </p>
                   </motion.div>
@@ -1752,7 +2104,7 @@ export default function CognitiveSimulator() {
                 {/* Direct DOM rendering of scrambled, wiggling text */}
                 <motion.div 
                   ref={textContainerRef}
-                  className="text-left transition-all duration-300 leading-relaxed overflow-visible text-zinc-200"
+                  className="text-center transition-all duration-300 leading-relaxed overflow-visible text-zinc-200 text-xs tracking-wide max-w-xl mx-auto"
                   style={{
                     letterSpacing,
                     filter: textFilter
@@ -1766,16 +2118,6 @@ export default function CognitiveSimulator() {
                 </motion.div>
               </div>
             </div>
-
-            {/* Column 2: Agency Meter */}
-            <div className="flex items-center justify-center h-full md:col-span-3 relative">
-              <AgencyMeter agencyScore={agencyScore} />
-            </div>
-
-            {/* Column 3: Existential Depth */}
-            <div className="flex items-center justify-center h-full md:col-span-3 relative">
-              <ExistentialDepth meaningScore={meaningScore} />
-            </div>
           </div>
 
           {/* Core Controls: Sliders & Parameter Display */}
@@ -1788,6 +2130,7 @@ export default function CognitiveSimulator() {
                 socialPressure={socialPressure}
                 economicStress={economicStress}
                 physicalMovement={physicalMovement}
+                syntheticInteraction={syntheticInteraction}
                 disabled={isRebooting}
                 onArchetypeSelect={setActiveArchetype}
               />
@@ -1994,7 +2337,7 @@ export default function CognitiveSimulator() {
         </section>
 
         {/* Right HUD Panel - Realtime Log Terminal */}
-        <RealtimeLogs logs={logs} nervousSystemLoad={nervousSystemLoad} isRebooting={isRebooting} />
+        <RealtimeLogs logs={logs} nervousSystemLoad={nervousSystemLoad} meaningScore={meaningScore} isRebooting={isRebooting} />
 
       </main>
 
@@ -2124,7 +2467,24 @@ export default function CognitiveSimulator() {
                     {autopsyReport.mostResilient.name}
                   </div>
                   <div className="text-[9px] text-zinc-500 mt-0.5 font-mono">
-                    Net variance: <span className="text-emerald-400">-{autopsyReport.mostResilient.value.toFixed(1)}%</span>
+                    {(() => {
+                      const systemKey = autopsyReport.mostResilient.id as 'load' | 'coherence' | 'agency' | 'meaning';
+                      const peakVal = autopsyReport.peaks[systemKey];
+                      const troughVal = autopsyReport.troughs[systemKey];
+                      const absVariance = Math.abs(peakVal - troughVal);
+
+                      if (systemKey === 'coherence' && peakVal === 100 && troughVal === 100) {
+                        return <span className="text-emerald-400 font-bold">Held stable throughout.</span>;
+                      }
+                      if (absVariance <= 5) {
+                        return <span className="text-zinc-400 font-bold">No significant variance recorded.</span>;
+                      }
+                      return (
+                        <>
+                          Variance: <span className="text-emerald-400 font-bold">±{Math.round(absVariance)}%</span>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>
@@ -2187,7 +2547,11 @@ export default function CognitiveSimulator() {
       {/* Reflection Modal */}
       <ReflectionModal
         isOpen={showReflection}
-        onClose={() => setShowReflection(false)}
+        onClose={(insightStr: string) => {
+          setShowReflection(false);
+          setCurrentInsight(insightStr);
+          setShowPrescription(true);
+        }}
         systemScores={{
           attention: Math.max(0, Math.min(100, 100 - nervousSystemLoad.get())),
           nervous: nervousSystemLoad.get(),
@@ -2201,6 +2565,30 @@ export default function CognitiveSimulator() {
         sessionDuration={sessionDuration}
         firedEvents={sessionEventsHistory}
         peakLoad={sessionPeakLoad.current}
+      />
+
+      {/* Environmental Prescription Modal */}
+      <EnvironmentalPrescription
+        isOpen={showPrescription}
+        onClose={() => setShowPrescription(false)}
+        systemScores={{
+          attention: Math.max(0, Math.min(100, 100 - nervousSystemLoad.get())),
+          nervous: nervousSystemLoad.get(),
+          identity: identityCoherence.get(),
+          agency: agencyScore.get(),
+          meaning: meaningScore.get(),
+        }}
+        sliderValues={{
+          sleepDebt: sleepDebt.get(),
+          stimulation: stimulationLevel.get(),
+          socialPressure: socialPressure.get(),
+          economicStress: economicStress.get(),
+          physicalMovement: physicalMovement.get(),
+          syntheticInteraction: syntheticInteraction.get(),
+        }}
+        activeArchetype={activeArchetype}
+        insight={currentInsight}
+        onApplyTargets={handleApplyPrescriptionTargets}
       />
     </div>
   );

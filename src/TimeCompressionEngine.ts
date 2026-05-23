@@ -218,8 +218,32 @@ export function useTimeCompression(
 
     // Generate descriptive 3-sentence narrative
     let s1: string;
-    const roundedValue = Math.round(fastestDegraded.value);
-    const hasSignificantChange = Math.abs(fastestDegraded.value) >= 2;
+    
+    // Get start and end values for the chosen fastestDegraded system
+    const currentLoad = sliderValues.nervousSystemLoad.get();
+    const currentCoherence = sliderValues.identityCoherence.get();
+    const currentAgency = sliderValues.agencyScore.get();
+    const currentMeaning = sliderValues.meaningScore.get();
+
+    let startVal = 0;
+    let endVal = 0;
+    if (fastestDegraded.id === 'load') {
+      startVal = initials.load;
+      endVal = currentLoad;
+    } else if (fastestDegraded.id === 'coherence') {
+      startVal = initials.coherence;
+      endVal = currentCoherence;
+    } else if (fastestDegraded.id === 'agency') {
+      startVal = initials.agency;
+      endVal = currentAgency;
+    } else if (fastestDegraded.id === 'meaning') {
+      startVal = initials.meaning;
+      endVal = currentMeaning;
+    }
+
+    const netChange = endVal - startVal;
+    const hasSignificantChange = Math.abs(netChange) >= 2;
+    const roundedValue = Math.round(Math.abs(netChange));
 
     if (fastestDegraded.id === 'load') {
       if (hasSignificantChange) {

@@ -95,10 +95,7 @@ export const AgencyMeter = React.memo(function AgencyMeter({ agencyScore }: Agen
     : (currentState === 'paralysis' ? "What's the point?" : "Maybe after this.");
 
   return (
-    <div className="flex flex-col items-center justify-between h-full py-4 select-none w-full border-r border-l border-zinc-900/30 px-3">
-      <div className="text-[9px] font-mono text-zinc-500 uppercase tracking-widest text-center">
-        Agency Core
-      </div>
+    <div className="flex flex-col items-center justify-between h-full py-4 select-none w-full px-3">
 
       {/* Flywheel Mechanical Spinner */}
       <div className="flex items-center justify-center my-4 h-16 w-16 relative">
