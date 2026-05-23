@@ -11,10 +11,18 @@ import {
   Fingerprint, 
   Info,
   Terminal,
-  Moon
+  Moon,
+  TrendingDown,
+  Users
 } from 'lucide-react';
 import AttentionGraph from './AttentionGraph';
 import IdentityCore from './IdentityCore';
+import AgencyMeter from './AgencyMeter';
+import ExistentialDepth from './ExistentialDepth';
+import { ArchetypeSelector } from './ArchetypeSelector';
+import { useNarrativeEvents } from './NarrativeEventEngine';
+import { useTimeCompression } from './TimeCompressionEngine';
+import ReflectionModal, { type SystemScores, type SliderSnapshot } from './ReflectionModal';
 
 // Eerie glitch glyphs for character substitution
 const GLYPHS = ['█', '░', '▓', '▒', 'Ø', '§', 'Δ', '¥', '0', '1', 'æ', '?', '!', '#', '*', 'α', 'β', 'λ', '†', '‡', 'µ', '¶', '▰', '▱', '◊', '◈'];
@@ -360,9 +368,16 @@ SimulationSlider.displayName = 'SimulationSlider';
 interface HudTelemetryProps {
   nervousSystemLoad: MotionValue<number>;
   isRebooting: boolean;
+  isCompressionActive?: boolean;
+  elapsedTime?: { hours: number, days: number, months: number, years: number };
 }
 
-const HudTelemetry = React.memo(({ nervousSystemLoad, isRebooting }: HudTelemetryProps) => {
+const HudTelemetry = React.memo(({ 
+  nervousSystemLoad, 
+  isRebooting,
+  isCompressionActive = false,
+  elapsedTime
+}: HudTelemetryProps) => {
   const [phase, setPhase] = useState<'normal' | 'warn' | 'crit'>('normal');
 
   useEffect(() => {
@@ -395,6 +410,17 @@ const HudTelemetry = React.memo(({ nervousSystemLoad, isRebooting }: HudTelemetr
             Neural Telemetry
           </h3>
         </div>
+
+        {isCompressionActive && elapsedTime && (
+          <div className="mb-4 bg-zinc-950 border border-zinc-900/60 p-2.5 text-center select-none animate-pulse">
+            <span className="font-mono text-[9px] text-zinc-500 tracking-widest uppercase">
+              COMPRESSION STATUS
+            </span>
+            <div className="font-mono text-[11px] text-zinc-200 font-bold mt-1 uppercase tracking-wider">
+              MONTH {elapsedTime.months} / DAY {elapsedTime.days}
+            </div>
+          </div>
+        )}
 
         <div className="space-y-4">
           <div>
@@ -572,6 +598,11 @@ interface DiagnosticReadoutProps {
   nervousSystemLoad: MotionValue<number>;
   syntheticInteraction: MotionValue<number>;
   identityCoherence: MotionValue<number>;
+  economicStress: MotionValue<number>;
+  physicalMovement: MotionValue<number>;
+  socialPressure: MotionValue<number>;
+  agencyScore: MotionValue<number>;
+  meaningScore: MotionValue<number>;
 }
 
 const DiagnosticReadout = React.memo(({ 
@@ -579,14 +610,19 @@ const DiagnosticReadout = React.memo(({
   sleepDebt, 
   nervousSystemLoad, 
   syntheticInteraction, 
-  identityCoherence 
+  identityCoherence,
+  economicStress,
+  physicalMovement,
+  socialPressure,
+  agencyScore,
+  meaningScore
 }: DiagnosticReadoutProps) => {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const updateText = () => {
       if (!ref.current) return;
-      ref.current.textContent = `STIMULATION: ${stimulationLevel.get()} | SLEEP DEBT: ${sleepDebt.get()}% | TRUE LOAD: ${nervousSystemLoad.get().toFixed(1)} | SYNTHETIC: ${syntheticInteraction.get()}% | COHERENCE: ${identityCoherence.get().toFixed(1)}%`;
+      ref.current.textContent = `STIM: ${stimulationLevel.get()} | SLEEP: ${sleepDebt.get()}% | LOAD: ${nervousSystemLoad.get().toFixed(1)} | SYNTH: ${syntheticInteraction.get()}% | COH: ${identityCoherence.get().toFixed(1)}% | ECON: ${economicStress.get()}% | PHYS: ${physicalMovement.get()}% | SOC: ${socialPressure.get()}% | AGENCY: ${agencyScore.get().toFixed(1)}% | MEANING: ${meaningScore.get().toFixed(1)}%`;
     };
 
     const unsubs = [
@@ -594,17 +630,33 @@ const DiagnosticReadout = React.memo(({
       sleepDebt.on("change", updateText),
       nervousSystemLoad.on("change", updateText),
       syntheticInteraction.on("change", updateText),
-      identityCoherence.on("change", updateText)
+      identityCoherence.on("change", updateText),
+      economicStress.on("change", updateText),
+      physicalMovement.on("change", updateText),
+      socialPressure.on("change", updateText),
+      agencyScore.on("change", updateText),
+      meaningScore.on("change", updateText)
     ];
 
     updateText();
     return () => {
       unsubs.forEach(unsub => unsub());
     };
-  }, [stimulationLevel, sleepDebt, nervousSystemLoad, syntheticInteraction, identityCoherence]);
+  }, [
+    stimulationLevel, 
+    sleepDebt, 
+    nervousSystemLoad, 
+    syntheticInteraction, 
+    identityCoherence,
+    economicStress,
+    physicalMovement,
+    socialPressure,
+    agencyScore,
+    meaningScore
+  ]);
 
   return (
-    <div ref={ref} className="text-[9px] font-mono text-zinc-600/40 text-center tracking-widest pt-2" />
+    <div ref={ref} className="text-[8px] font-mono text-zinc-600/40 text-center tracking-wider pt-2" />
   );
 });
 
@@ -720,6 +772,9 @@ interface HeaderStatusProps {
   isMuted: boolean;
   setIsMuted: (muted: boolean) => void;
   handleReboot: () => void;
+  sessionDuration: number;
+  canRunAnalysis: boolean;
+  onRunAnalysis: () => void;
 }
 
 const HeaderStatus = React.memo(({
@@ -727,8 +782,16 @@ const HeaderStatus = React.memo(({
   isRebooting,
   isMuted,
   setIsMuted,
-  handleReboot
+  handleReboot,
+  sessionDuration,
+  canRunAnalysis,
+  onRunAnalysis,
 }: HeaderStatusProps) => {
+  const durationLabel = React.useMemo(() => {
+    const m = Math.floor(sessionDuration / 60);
+    const s = Math.floor(sessionDuration % 60);
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
+  }, [sessionDuration]);
   const statusTextRef = useRef<HTMLSpanElement>(null);
   const statusIndicatorRef = useRef<HTMLDivElement>(null);
   
@@ -781,6 +844,26 @@ const HeaderStatus = React.memo(({
         </div>
 
         <div className="flex items-center space-x-2">
+          {/* Session Duration Ticker */}
+          <div className="hidden md:flex flex-col text-right font-mono text-[10px]">
+            <span className="text-zinc-600 uppercase">SESSION</span>
+            <span className="font-bold text-zinc-500">{durationLabel}</span>
+          </div>
+
+          {/* Run Analysis Button */}
+          <button
+            onClick={onRunAnalysis}
+            disabled={!canRunAnalysis}
+            className={`px-3 py-2 rounded-none border font-mono text-[9px] uppercase tracking-widest font-bold transition-all duration-300 cursor-pointer ${
+              canRunAnalysis
+                ? 'border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 bg-transparent'
+                : 'border-zinc-900 text-zinc-700 cursor-not-allowed opacity-50'
+            }`}
+            title={canRunAnalysis ? 'Open Reflection Report' : 'Run simulation for 60s to enable'}
+          >
+            {canRunAnalysis ? 'Run Analysis' : `Analysis (${Math.max(0, 60 - sessionDuration)}s)`}
+          </button>
+
           <button
             onClick={() => setIsMuted(!isMuted)}
             className="p-2 rounded border border-zinc-900 hover:bg-zinc-950 text-zinc-400 hover:text-zinc-100 transition-colors cursor-pointer"
@@ -814,10 +897,77 @@ export default function CognitiveSimulator() {
   const nervousSystemLoad = useMotionValue<number>(1);
   const identityCoherence = useMotionValue<number>(100);
 
+  const economicStress = useMotionValue<number>(30);
+  const physicalMovement = useMotionValue<number>(50);
+  const socialPressure = useMotionValue<number>(20);
+  const agencyScore = useMotionValue<number>(65);
+  const meaningScore = useMotionValue<number>(75);
+
   const [isMuted, setIsMuted] = useState<boolean>(true);
   const [isRebooting, setIsRebooting] = useState<boolean>(false);
   const [isReady, setIsReady] = useState<boolean>(false);
   const [logs, setLogs] = useState<typeof INITIAL_LOGS>(INITIAL_LOGS);
+
+  // Reflection Modal state
+  const [sessionDuration, setSessionDuration] = useState<number>(0);
+  const [showReflection, setShowReflection] = useState<boolean>(false);
+  const [activeArchetype, setActiveArchetype] = useState<string | null>(null);
+  const [systemStartScores, setSystemStartScores] = useState<SystemScores>({
+    attention: 65,
+    nervous: 1,
+    identity: 100,
+    agency: 65,
+    meaning: 75,
+  });
+
+  // Helper: snapshot current system scores
+  const captureStartScores = React.useCallback((): SystemScores => ({
+    attention: Math.max(0, Math.min(100, 100 - nervousSystemLoad.get())),
+    nervous: nervousSystemLoad.get(),
+    identity: identityCoherence.get(),
+    agency: agencyScore.get(),
+    meaning: meaningScore.get(),
+  }), [nervousSystemLoad, identityCoherence, agencyScore, meaningScore]);
+
+  // Helper: build current slider snapshot
+  const getSliderSnapshot = React.useCallback((): SliderSnapshot => ({
+    sleepDebt: sleepDebt.get(),
+    stimulation: stimulationLevel.get(),
+    socialPressure: socialPressure.get(),
+    economicStress: economicStress.get(),
+    physicalMovement: physicalMovement.get(),
+  }), [sleepDebt, stimulationLevel, socialPressure, economicStress, physicalMovement]);
+
+  const {
+    isCompressionActive,
+    isPaused: isCompressionPaused,
+    elapsedSimulatedTime,
+    progressPercent,
+    eventDots,
+    autopsyReport,
+    tickInterval,
+    driftStepMultiplier,
+    startCompression,
+    pauseCompression,
+    resetCompression,
+    logCompressionEvent
+  } = useTimeCompression({
+    nervousSystemLoad,
+    identityCoherence,
+    agencyScore,
+    meaningScore
+  }, isRebooting);
+
+  const activeEvents = useNarrativeEvents({
+    stimulationLevel,
+    sleepDebt,
+    socialPressure,
+    economicStress,
+    physicalMovement,
+    meaningScore,
+    agencyScore,
+    nervousSystemLoad
+  }, isRebooting, tickInterval, logCompressionEvent);
 
   // Quadrant matrix state that only re-renders the headers when boundaries are crossed
   const [quadrant, setQuadrant] = useState({
@@ -885,34 +1035,82 @@ export default function CognitiveSimulator() {
   const identityText = "I am a human being. I remember the smell of pine trees after a summer rain. I remember the sound of my mother's voice, calling me from the porch. I remember the cold water of the lake in October. My thoughts are my own. I have memories, dreams, and values. I hold onto my name. I hold onto my history. I am still here. I am still myself.";
   const words = useMemo(() => identityText.split(" "), [identityText]);
 
-  // 500ms Game Loop/Simulation Engine
+  // Game Loop/Simulation Engine (accel tick rate under time compression)
   useEffect(() => {
     if (isRebooting) return;
     const interval = setInterval(() => {
       const stim = stimulationLevel.get();
       const sleep = sleepDebt.get();
       const synth = syntheticInteraction.get();
+      const econ = economicStress.get();
+      const phys = physicalMovement.get();
+      const soc = socialPressure.get();
 
       const targetLoad = Math.min(100, stim * (1 + (sleep * 0.015)));
       const targetCoherence = Math.max(0, 100 - synth);
 
+      // Social pressure non-linear calculation: moderate pressure boosts, high pressure crashes
+      let socialEffect: number;
+      if (soc <= 50) {
+        socialEffect = 0.4 * soc;
+      } else {
+        socialEffect = 20 - 1.4 * (soc - 50);
+      }
+
+      const targetAgency = Math.max(0, Math.min(100, 50 - 0.35 * sleep - 0.35 * econ + 0.30 * phys + socialEffect));
+
+      // Meaning/Existential Stability calculations
+      const socialConnection = 100 - synth; // social connection (positive) -> inverse synthetic interaction
+      const sleepVal = 100 - sleep; // sleep (positive) -> inverse sleep debt
+      const targetMeaning = Math.max(0, Math.min(100, 30 - 0.25 * stim - 0.25 * sleepVal + 0.3 * socialConnection + 0.3 * phys - 0.25 * econ));
+
+      const driftStep = 1 * driftStepMultiplier;
+
       const currentLoad = nervousSystemLoad.get();
       if (currentLoad < targetLoad) {
-        nervousSystemLoad.set(Math.min(targetLoad, currentLoad + 1));
+        nervousSystemLoad.set(Math.min(targetLoad, currentLoad + driftStep));
       } else if (currentLoad > targetLoad) {
-        nervousSystemLoad.set(Math.max(targetLoad, currentLoad - 1));
+        nervousSystemLoad.set(Math.max(targetLoad, currentLoad - driftStep));
       }
 
       const currentCoherence = identityCoherence.get();
       if (currentCoherence < targetCoherence) {
-        identityCoherence.set(Math.min(targetCoherence, currentCoherence + 1));
+        identityCoherence.set(Math.min(targetCoherence, currentCoherence + driftStep));
       } else if (currentCoherence > targetCoherence) {
-        identityCoherence.set(Math.max(targetCoherence, currentCoherence - 1));
+        identityCoherence.set(Math.max(targetCoherence, currentCoherence - driftStep));
       }
-    }, 500);
+
+      const currentAgency = agencyScore.get();
+      if (currentAgency < targetAgency) {
+        agencyScore.set(Math.min(targetAgency, currentAgency + driftStep));
+      } else if (currentAgency > targetAgency) {
+        agencyScore.set(Math.max(targetAgency, currentAgency - driftStep));
+      }
+
+      const currentMeaning = meaningScore.get();
+      if (currentMeaning < targetMeaning) {
+        meaningScore.set(Math.min(targetMeaning, currentMeaning + driftStep));
+      } else if (currentMeaning > targetMeaning) {
+        meaningScore.set(Math.max(targetMeaning, currentMeaning - driftStep));
+      }
+    }, tickInterval);
 
     return () => clearInterval(interval);
-  }, [isRebooting, stimulationLevel, sleepDebt, syntheticInteraction, nervousSystemLoad, identityCoherence]);
+  }, [
+    isRebooting,
+    stimulationLevel,
+    sleepDebt,
+    syntheticInteraction,
+    nervousSystemLoad,
+    identityCoherence,
+    economicStress,
+    physicalMovement,
+    socialPressure,
+    agencyScore,
+    meaningScore,
+    tickInterval,
+    driftStepMultiplier
+  ]);
 
   // Pointer position writes CSS variables directly into DOM to bypass React render
   const handlePointerMove = (e: React.PointerEvent) => {
@@ -1115,6 +1313,15 @@ export default function CognitiveSimulator() {
     });
   }, [nervousSystemLoad, isReady, isRebooting]);
 
+  // Session duration counter — increments every second while simulation is live
+  useEffect(() => {
+    if (!isReady || isRebooting) return;
+    const timer = setInterval(() => {
+      setSessionDuration(prev => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [isReady, isRebooting]);
+
   const handleStart = () => {
     if (synthRef.current) {
       synthRef.current.init();
@@ -1122,6 +1329,8 @@ export default function CognitiveSimulator() {
       synthRef.current.update(1, false);
     }
     setIsReady(true);
+    setSystemStartScores(captureStartScores());
+    setSessionDuration(0);
   };
 
   const handleReboot = () => {
@@ -1141,9 +1350,19 @@ export default function CognitiveSimulator() {
       stimulationLevel.set(1);
       sleepDebt.set(0);
       syntheticInteraction.set(0);
+      economicStress.set(30);
+      physicalMovement.set(50);
+      socialPressure.set(20);
       nervousSystemLoad.set(1);
       identityCoherence.set(100);
+      agencyScore.set(65);
+      meaningScore.set(75);
       setIsRebooting(false);
+      setActiveArchetype(null);
+      setSessionDuration(0);
+      setSystemStartScores({
+        attention: 65, nervous: 1, identity: 100, agency: 65, meaning: 75,
+      });
       setLogs([
         { id: 1, text: "neural sync connection established...", type: "system" },
         { id: 2, text: "memetic integrity index: 1.00 (STABLE)", type: "success" },
@@ -1263,13 +1482,21 @@ export default function CognitiveSimulator() {
         isMuted={isMuted} 
         setIsMuted={setIsMuted} 
         handleReboot={handleReboot}
+        sessionDuration={sessionDuration}
+        canRunAnalysis={sessionDuration >= 60}
+        onRunAnalysis={() => setShowReflection(true)}
       />
 
       {/* Main Spatial Grid Workspace */}
       <main className="relative flex-1 w-full max-w-[90rem] mx-auto grid grid-cols-1 lg:grid-cols-6 gap-6 p-6 z-10 items-stretch">
         
         {/* Left HUD Panel - Diagnostics */}
-        <HudTelemetry nervousSystemLoad={nervousSystemLoad} isRebooting={isRebooting} />
+        <HudTelemetry 
+          nervousSystemLoad={nervousSystemLoad} 
+          isRebooting={isRebooting} 
+          isCompressionActive={isCompressionActive}
+          elapsedTime={elapsedSimulatedTime}
+        />
 
         {/* Center Panel - The Core Experiment */}
         <section className="col-span-1 lg:col-span-4 flex flex-col justify-between items-center bg-zinc-950/20 border border-zinc-900/60 rounded-lg p-6 backdrop-blur-sm relative">
@@ -1277,10 +1504,10 @@ export default function CognitiveSimulator() {
           {/* Neural Orb/Core graphic */}
           <NeuralOrb nervousSystemLoad={nervousSystemLoad} />
 
-          {/* Split-screen Layout: Text Block & Attention Graph */}
-          <div className="w-full flex-1 grid grid-cols-1 md:grid-cols-2 gap-8 items-center my-12 max-w-[80rem] min-h-[460px]">
-            {/* Left Column: Text Block */}
-            <div className="flex items-center justify-start h-full px-4 select-text md:border-r md:border-zinc-900/30 md:pr-10 relative">
+          {/* Symmetrical 4-Column Layout: Text Block, Agency Meter, Existential Depth, & Attention Graph */}
+          <div className="w-full flex-1 grid grid-cols-1 md:grid-cols-12 gap-6 items-center my-12 max-w-[80rem] min-h-[460px]">
+            {/* Column 1: Text Block */}
+            <div className="flex items-center justify-start h-full px-4 select-text md:col-span-4 relative">
               <IdentityCore coherence={identityCoherence} />
 
               <div className="flex flex-col space-y-6 max-w-md relative z-10 w-full">
@@ -1321,49 +1548,110 @@ export default function CognitiveSimulator() {
               </div>
             </div>
 
-            {/* Right Column: Attention Graph */}
-            <div className="flex items-center justify-center w-full h-full relative pl-0 md:pl-6 select-none">
+            {/* Column 2: Agency Meter */}
+            <div className="flex items-center justify-center h-full md:col-span-2 relative">
+              <AgencyMeter agencyScore={agencyScore} />
+            </div>
+
+            {/* Column 3: Existential Depth */}
+            <div className="flex items-center justify-center h-full md:col-span-2 relative">
+              <ExistentialDepth meaningScore={meaningScore} />
+            </div>
+
+            {/* Column 4: Attention Graph */}
+            <div className="flex items-center justify-center w-full h-full relative pl-0 md:pl-6 select-none md:col-span-4">
               <AttentionGraph load={nervousSystemLoad} />
             </div>
           </div>
 
           {/* Core Controls: Sliders & Parameter Display */}
           <div className="w-full border-t border-zinc-900/60 pt-6 mt-auto">
-            <div className="w-full max-w-md mx-auto space-y-6">
+            <div className="w-full max-w-3xl mx-auto space-y-6">
               
-              {/* Slider 1: Algorithmic Stimulation */}
-              <SimulationSlider 
-                label="Algorithmic Stimulation"
-                icon={Sliders}
-                min={1}
-                max={100}
-                motionValue={stimulationLevel}
-                activeColorVal={nervousSystemLoad}
-                colorThresholds={true}
+              <ArchetypeSelector 
+                stimulationLevel={stimulationLevel}
+                sleepDebt={sleepDebt}
+                socialPressure={socialPressure}
+                economicStress={economicStress}
+                physicalMovement={physicalMovement}
                 disabled={isRebooting}
+                onArchetypeSelect={setActiveArchetype}
               />
 
-              {/* Slider 2: Sleep Debt */}
-              <SimulationSlider 
-                label="Sleep Debt"
-                icon={Moon}
-                min={0}
-                max={100}
-                motionValue={sleepDebt}
-                valueSuffix="%"
-                disabled={isRebooting}
-              />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-6">
+                {/* Left Column Sliders */}
+                <div className="space-y-6">
+                  {/* Slider 1: Algorithmic Stimulation */}
+                  <SimulationSlider 
+                    label="Algorithmic Stimulation"
+                    icon={Sliders}
+                    min={1}
+                    max={100}
+                    motionValue={stimulationLevel}
+                    activeColorVal={nervousSystemLoad}
+                    colorThresholds={true}
+                    disabled={isRebooting}
+                  />
 
-              {/* Slider 3: Synthetic Interaction */}
-              <SimulationSlider 
-                label="Synthetic Interaction"
-                icon={Fingerprint}
-                min={0}
-                max={100}
-                motionValue={syntheticInteraction}
-                valueSuffix="%"
-                disabled={isRebooting}
-              />
+                  {/* Slider 2: Sleep Debt */}
+                  <SimulationSlider 
+                    label="Sleep Debt"
+                    icon={Moon}
+                    min={0}
+                    max={100}
+                    motionValue={sleepDebt}
+                    valueSuffix="%"
+                    disabled={isRebooting}
+                  />
+
+                  {/* Slider 3: Synthetic Interaction */}
+                  <SimulationSlider 
+                    label="Synthetic Interaction"
+                    icon={Fingerprint}
+                    min={0}
+                    max={100}
+                    motionValue={syntheticInteraction}
+                    valueSuffix="%"
+                    disabled={isRebooting}
+                  />
+                </div>
+
+                {/* Right Column Sliders */}
+                <div className="space-y-6">
+                  {/* Slider 4: Economic Stress */}
+                  <SimulationSlider 
+                    label="Economic Stress"
+                    icon={TrendingDown}
+                    min={0}
+                    max={100}
+                    motionValue={economicStress}
+                    valueSuffix="%"
+                    disabled={isRebooting}
+                  />
+
+                  {/* Slider 5: Physical Movement */}
+                  <SimulationSlider 
+                    label="Physical Movement"
+                    icon={Activity}
+                    min={0}
+                    max={100}
+                    motionValue={physicalMovement}
+                    valueSuffix="%"
+                    disabled={isRebooting}
+                  />
+
+                  {/* Slider 6: Social Pressure */}
+                  <SimulationSlider 
+                    label="Social Pressure"
+                    icon={Users}
+                    min={0}
+                    max={100}
+                    motionValue={socialPressure}
+                    valueSuffix="%"
+                    disabled={isRebooting}
+                  />
+                </div>
+              </div>
 
               {/* Spatial Alert/Notice Bar */}
               <CriticalAlert nervousSystemLoad={nervousSystemLoad} />
@@ -1375,7 +1663,101 @@ export default function CognitiveSimulator() {
                 nervousSystemLoad={nervousSystemLoad}
                 syntheticInteraction={syntheticInteraction}
                 identityCoherence={identityCoherence}
+                economicStress={economicStress}
+                physicalMovement={physicalMovement}
+                socialPressure={socialPressure}
+                agencyScore={agencyScore}
+                meaningScore={meaningScore}
               />
+
+              {/* Timeline Scrubber & Compression Panel */}
+              <div className="w-full border-t border-zinc-900/60 pt-4 font-mono text-[10px] select-none text-left">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-2.5">
+                  <div className="flex items-center space-x-3">
+                    <span className="text-zinc-500 font-bold uppercase tracking-wider text-[8px]">TIME MATRIX:</span>
+                    {isCompressionActive ? (
+                      <span className="text-zinc-200 font-bold tracking-widest text-[10px] animate-pulse">
+                        MONTH {elapsedSimulatedTime.months} / DAY {elapsedSimulatedTime.days} / HOUR {elapsedSimulatedTime.hours}
+                      </span>
+                    ) : (
+                      <span className="text-zinc-655 font-bold tracking-wider text-[8.5px]">MANUAL RUN TIME</span>
+                    )}
+                  </div>
+                  
+                  {/* Mode Selector and Controls */}
+                  <div className="flex items-center space-x-2">
+                    {!isCompressionActive ? (
+                      <div className="flex items-center space-x-1 bg-black/45 border border-zinc-900 p-0.5 rounded-none">
+                        <button
+                          onClick={() => startCompression('day')}
+                          disabled={isRebooting}
+                          className="px-2 py-1 text-[8px] hover:bg-zinc-900 text-zinc-400 hover:text-zinc-200 transition-colors uppercase cursor-pointer rounded-none border border-transparent hover:border-zinc-800"
+                        >
+                          + 1 Day
+                        </button>
+                        <button
+                          onClick={() => startCompression('month')}
+                          disabled={isRebooting}
+                          className="px-2 py-1 text-[8px] hover:bg-zinc-900 text-zinc-400 hover:text-zinc-200 transition-colors uppercase cursor-pointer rounded-none border border-transparent hover:border-zinc-800"
+                        >
+                          + 1 Month
+                        </button>
+                        <button
+                          onClick={() => startCompression('year')}
+                          disabled={isRebooting}
+                          className="px-2 py-1 text-[8px] hover:bg-zinc-900 text-zinc-400 hover:text-zinc-200 transition-colors uppercase cursor-pointer rounded-none border border-transparent hover:border-zinc-800"
+                        >
+                          + 1 Year
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-1 bg-black/45 border border-zinc-900 p-0.5 rounded-none">
+                        <button
+                          onClick={pauseCompression}
+                          className="px-2.5 py-1 text-[8px] hover:bg-zinc-900 text-zinc-300 font-bold uppercase cursor-pointer rounded-none border border-transparent hover:border-zinc-800"
+                        >
+                          {isCompressionPaused ? "RESUME" : "PAUSE"}
+                        </button>
+                        <button
+                          onClick={resetCompression}
+                          className="px-2.5 py-1 text-[8px] bg-red-950/20 hover:bg-red-950/40 text-red-400 hover:text-red-300 font-bold border-l border-zinc-900 uppercase cursor-pointer rounded-none border-t border-b border-r border-transparent hover:border-zinc-800"
+                        >
+                          ABORT
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Scrubber Timeline Bar */}
+                <div className="relative w-full h-2.5 bg-zinc-950 border border-zinc-900 rounded-none overflow-visible flex items-center mb-1 select-none">
+                  {/* Progress bar */}
+                  <div
+                    style={{ width: `${progressPercent}%` }}
+                    className="h-full bg-zinc-800 transition-all duration-100 ease-out"
+                  />
+
+                  {/* Tick Marks / Event Dots */}
+                  {eventDots.map((dot, idx) => (
+                    <div
+                      key={idx}
+                      style={{ left: `${dot.percent}%` }}
+                      className="absolute group/dot top-1/2 -translate-y-1/2 -translate-x-1/2 w-1.5 h-1.5 bg-zinc-200 border border-black cursor-crosshair z-25"
+                    >
+                      {/* Tooltip on hover */}
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 scale-0 group-hover/dot:scale-100 transition-all font-mono text-[8px] bg-zinc-950 border border-zinc-850 text-zinc-300 px-1.5 py-0.5 rounded-none pointer-events-none whitespace-nowrap z-30 shadow-md">
+                        {dot.name} (Hour {Math.round(dot.hour)})
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex justify-between text-[7px] text-zinc-650">
+                  <span>0% START</span>
+                  <span>{progressPercent.toFixed(1)}% ELAPSED</span>
+                  <span>100% TIMELINE COMPLETED</span>
+                </div>
+              </div>
 
             </div>
           </div>
@@ -1409,6 +1791,185 @@ export default function CognitiveSimulator() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Narrative Events Notifications Overlay */}
+      <div className="fixed bottom-6 right-6 z-40 flex flex-col gap-2.5 max-w-[280px] pointer-events-none select-none">
+        <AnimatePresence>
+          {activeEvents.map(evt => (
+            <motion.div
+              key={evt.id}
+              initial={{ opacity: 0, x: 50 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="bg-black border border-zinc-900 p-3 font-mono text-[9px] text-zinc-350 rounded-none pointer-events-auto shadow-none"
+            >
+              <div className="font-bold border-b border-zinc-900 pb-1 mb-1.5 uppercase text-zinc-100 flex justify-between items-center">
+                <span>[SYSTEM ALERT: {evt.name}]</span>
+              </div>
+              <div className="space-y-1">
+                {Object.entries(evt.deltas).map(([key, val]) => {
+                  if (val === undefined) return null;
+                  const arrow = val > 0 ? "↑" : "↓";
+                  const sign = val > 0 ? "+" : "";
+                  const formattedKey = key
+                    .replace(/Level$/, '')
+                    .replace(/Score$/, '')
+                    .replace(/([A-Z])/g, ' $1')
+                    .toUpperCase();
+                  return (
+                    <div key={key} className="flex justify-between items-center">
+                      <span className="text-zinc-500">{formattedKey}</span>
+                      <span className="text-zinc-200 font-bold">
+                        {arrow} {sign}{val}
+                      </span>
+                    </div>
+                  );
+                })}
+                <div className="text-[8px] text-zinc-650 flex justify-between items-center pt-1.5 border-t border-zinc-900 mt-1.5">
+                  <span>EXPIRATION COUNTDOWN:</span>
+                  <span>{evt.remainingTime}s</span>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+
+      {/* Psychological Autopsy Report Modal Overlay */}
+      <AnimatePresence>
+        {autopsyReport && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+              className="max-w-xl w-full bg-black border border-zinc-800 p-6 font-mono text-zinc-300 rounded-none flex flex-col gap-4 relative shadow-2xl"
+            >
+              <div className="border-b border-zinc-800 pb-3">
+                <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest text-left">
+                  // COGNITIVE COMPRESSION METRICS //
+                </div>
+                <h2 className="text-[14px] text-zinc-100 font-bold mt-1 uppercase tracking-wider text-left">
+                  Psychological Autopsy Report
+                </h2>
+                <div className="text-[8px] text-zinc-600 mt-0.5 text-left">
+                  TIMELINE MODE: {autopsyReport.mode.toUpperCase()} RUN COMPLETE
+                </div>
+              </div>
+
+              {/* Narrative Summary */}
+              <div className="bg-zinc-950 border border-zinc-900 p-4 text-[10px] leading-relaxed text-zinc-400 text-left">
+                <div className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider mb-2 border-b border-zinc-900 pb-1">
+                  &gt; Executive Subject Profile:
+                </div>
+                <p className="font-mono">{autopsyReport.narrative}</p>
+              </div>
+
+              {/* Key Diagnostic Vectors */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="border border-zinc-900 p-3 text-left">
+                  <div className="text-[8px] text-red-500 font-bold uppercase tracking-wider">
+                    [!] Primary Failure Vector
+                  </div>
+                  <div className="text-[11px] text-zinc-200 font-bold mt-1 uppercase">
+                    {autopsyReport.fastestDegraded.name}
+                  </div>
+                  <div className="text-[9px] text-zinc-500 mt-0.5 font-mono">
+                    Net decline: <span className="text-red-400">+{autopsyReport.fastestDegraded.value.toFixed(1)}%</span>
+                  </div>
+                </div>
+
+                <div className="border border-zinc-900 p-3 text-left">
+                  <div className="text-[8px] text-emerald-500 font-bold uppercase tracking-wider">
+                    [*] Highest Core Resilience
+                  </div>
+                  <div className="text-[11px] text-zinc-200 font-bold mt-1 uppercase">
+                    {autopsyReport.mostResilient.name}
+                  </div>
+                  <div className="text-[9px] text-zinc-500 mt-0.5 font-mono">
+                    Net variance: <span className="text-emerald-400">-{autopsyReport.mostResilient.value.toFixed(1)}%</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Peak and Trough Matrix Table */}
+              <div className="border border-zinc-900 p-3">
+                <div className="text-[8px] text-zinc-500 font-bold uppercase tracking-wider mb-2 text-left">
+                  &gt; Symmetrical Telemetry Matrix:
+                </div>
+                <table className="w-full text-[9px] font-mono text-zinc-400">
+                  <thead>
+                    <tr className="border-b border-zinc-900 text-zinc-500 text-left">
+                      <th className="pb-1.5">SYSTEM</th>
+                      <th className="pb-1.5 text-right">START</th>
+                      <th className="pb-1.5 text-right">PEAK</th>
+                      <th className="pb-1.5 text-right">TROUGH</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-zinc-900/50">
+                      <td className="py-2 text-left uppercase">Nervous Load</td>
+                      <td className="py-2 text-right">{autopsyReport.initials.load.toFixed(0)}%</td>
+                      <td className="py-2 text-right text-red-400">{autopsyReport.peaks.load.toFixed(0)}%</td>
+                      <td className="py-2 text-right">{autopsyReport.troughs.load.toFixed(0)}%</td>
+                    </tr>
+                    <tr className="border-b border-zinc-900/50">
+                      <td className="py-2 text-left uppercase">Identity Coherence</td>
+                      <td className="py-2 text-right">{autopsyReport.initials.coherence.toFixed(0)}%</td>
+                      <td className="py-2 text-right">{autopsyReport.peaks.coherence.toFixed(0)}%</td>
+                      <td className="py-2 text-right text-red-400">{autopsyReport.troughs.coherence.toFixed(0)}%</td>
+                    </tr>
+                    <tr className="border-b border-zinc-900/50">
+                      <td className="py-2 text-left uppercase">Agency Index</td>
+                      <td className="py-2 text-right">{autopsyReport.initials.agency.toFixed(0)}%</td>
+                      <td className="py-2 text-right">{autopsyReport.peaks.agency.toFixed(0)}%</td>
+                      <td className="py-2 text-right text-red-400">{autopsyReport.troughs.agency.toFixed(0)}%</td>
+                    </tr>
+                    <tr>
+                      <td className="py-2 text-left uppercase text-zinc-400">Existential stability</td>
+                      <td className="py-2 text-right">{autopsyReport.initials.meaning.toFixed(0)}%</td>
+                      <td className="py-2 text-right">{autopsyReport.peaks.meaning.toFixed(0)}%</td>
+                      <td className="py-2 text-right text-red-400">{autopsyReport.troughs.meaning.toFixed(0)}%</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Close Action Button */}
+              <button
+                onClick={resetCompression}
+                className="w-full mt-2 py-2 bg-zinc-900 border border-zinc-800 text-zinc-350 hover:bg-zinc-850 hover:text-zinc-200 transition-colors uppercase text-[10px] font-bold tracking-widest cursor-pointer rounded-none"
+              >
+                [ RESET MATRIX & TELEMETRY ]
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Reflection Modal */}
+      <ReflectionModal
+        isOpen={showReflection}
+        onClose={() => setShowReflection(false)}
+        systemScores={{
+          attention: Math.max(0, Math.min(100, 100 - nervousSystemLoad.get())),
+          nervous: nervousSystemLoad.get(),
+          identity: identityCoherence.get(),
+          agency: agencyScore.get(),
+          meaning: meaningScore.get(),
+        }}
+        systemStartScores={systemStartScores}
+        sliderValues={getSliderSnapshot()}
+        activeArchetype={activeArchetype}
+        sessionDuration={sessionDuration}
+      />
     </div>
   );
 }
