@@ -1,5 +1,5 @@
-import React, { useRef, useEffect } from 'react';
-import { useAnimationFrame, MotionValue, useMotionValue } from 'framer-motion';
+import React, { useRef, useEffect, useState } from 'react';
+import { useAnimationFrame, MotionValue, useMotionValue, motion, AnimatePresence } from 'framer-motion';
 
 interface AgencyMeterProps {
   agencyScore: MotionValue<number>;
@@ -9,11 +9,28 @@ export const AgencyMeter = React.memo(function AgencyMeter({ agencyScore }: Agen
   const smoothedAgency = useMotionValue(agencyScore.get());
   const rotation = useMotionValue(0);
 
-  // DOM Refs for direct manipulation to prevent component re-renders
+  const [currentState, setCurrentState] = useState<'initiating' | 'stalling' | 'paralysis'>('stalling');
+
+  // Monitor smoothedAgency for boundary crossings
+  useEffect(() => {
+    const unsubscribe = smoothedAgency.on('change', (v) => {
+      let newState: 'initiating' | 'stalling' | 'paralysis' = 'stalling';
+      if (v > 70) {
+        newState = 'initiating';
+      } else if (v < 30) {
+        newState = 'paralysis';
+      }
+      setCurrentState(prev => {
+        if (prev !== newState) return newState;
+        return prev;
+      });
+    });
+    return () => unsubscribe();
+  }, [smoothedAgency]);
+
+  // DOM Refs for direct manipulation to prevent component re-renders of the high-speed visuals
   const barFillRef = useRef<HTMLDivElement>(null);
   const flywheelRef = useRef<SVGSVGElement>(null);
-  const statusTextRef = useRef<HTMLSpanElement>(null);
-  const monologueRef = useRef<HTMLDivElement>(null);
 
   useAnimationFrame((_, delta) => {
     // 1. Smooth out the agencyScore with viscous LERP
@@ -25,7 +42,6 @@ export const AgencyMeter = React.memo(function AgencyMeter({ agencyScore }: Agen
     smoothedAgency.set(newSmooth);
 
     // 2. Rotate the flywheel proportional to agency level (frozen if <30)
-    // At agency 100: rotates at 8 rad/sec, at 30: 0 rad/sec
     const speed = newSmooth > 30 ? ((newSmooth - 30) / 70) * 8.5 : 0;
     const currentRot = rotation.get();
     rotation.set(currentRot + speed * (delta / 1000) * 57.2958); // convert to degrees
@@ -54,39 +70,7 @@ export const AgencyMeter = React.memo(function AgencyMeter({ agencyScore }: Agen
       flywheel.style.opacity = opacity.toString();
     }
 
-    // 5. Update Status State Text, Monologue, and Colors directly
-    const statusText = statusTextRef.current;
-    const monologue = monologueRef.current;
-    if (statusText && monologue) {
-      let stateStr = "STALLING";
-      let monologueStr = "Maybe after this.";
-      let monologueCol = "text-amber-500/70";
-      let statusCol = "text-amber-500";
-
-      if (newSmooth > 70) {
-        stateStr = "INITIATING";
-        monologueStr = "I'll start now.";
-        monologueCol = "text-indigo-400/90 font-bold";
-        statusCol = "text-indigo-400 font-bold";
-      } else if (newSmooth < 30) {
-        stateStr = "PARALYSIS";
-        monologueStr = "What's the point?";
-        monologueCol = "text-zinc-600/80 italic";
-        statusCol = "text-rose-500 font-bold animate-pulse";
-      }
-
-      if (statusText.textContent !== stateStr) {
-        statusText.textContent = stateStr;
-        statusText.className = `text-[10px] font-mono font-bold tracking-wider ${statusCol}`;
-      }
-
-      if (monologue.textContent !== monologueStr) {
-        monologue.textContent = monologueStr;
-        monologue.className = `text-[9px] font-mono max-w-[120px] leading-relaxed transition-all duration-300 ${monologueCol}`;
-      }
-    }
-
-    // 6. Emit paralysis hover delay class directly on document body
+    // 5. Emit paralysis hover delay class directly on document body
     if (newSmooth < 30) {
       document.body.classList.add('agency-paralyzed');
     } else {
@@ -100,6 +84,15 @@ export const AgencyMeter = React.memo(function AgencyMeter({ agencyScore }: Agen
       document.body.classList.remove('agency-paralyzed');
     };
   }, []);
+
+  const stateLabel = currentState.toUpperCase();
+  const labelColor = currentState === 'initiating' 
+    ? '#EF9F27' 
+    : (currentState === 'paralysis' ? '#E24B4A' : 'rgba(255,255,255,0.4)');
+
+  const monologueText = currentState === 'initiating'
+    ? "I'll start now."
+    : (currentState === 'paralysis' ? "What's the point?" : "Maybe after this.");
 
   return (
     <div className="flex flex-col items-center justify-between h-full py-4 select-none w-full border-r border-l border-zinc-900/30 px-3">
@@ -128,6 +121,16 @@ export const AgencyMeter = React.memo(function AgencyMeter({ agencyScore }: Agen
         </svg>
       </div>
 
+      {/* State label above the bar */}
+      <div className="text-center mb-1.5 select-none h-4 flex items-center justify-center">
+        <span 
+          className="text-[10px] font-mono font-bold tracking-wider"
+          style={{ color: labelColor }}
+        >
+          {stateLabel}
+        </span>
+      </div>
+
       {/* Momentum Bar */}
       <div className="flex-1 flex justify-center items-center py-2 h-full w-full min-h-[160px]">
         <div className="w-2.5 h-full min-h-[160px] bg-zinc-950/80 border border-zinc-900 rounded-full relative overflow-hidden">
@@ -139,22 +142,20 @@ export const AgencyMeter = React.memo(function AgencyMeter({ agencyScore }: Agen
         </div>
       </div>
 
-      {/* State & Monologue Text */}
-      <div className="flex flex-col items-center mt-4 text-center space-y-1.5 w-full">
-        <span 
-          ref={statusTextRef} 
-          className="text-[10px] font-mono font-bold tracking-wider text-zinc-400"
-        >
-          STALLING
-        </span>
-        <div className="min-h-[28px] flex items-center justify-center">
-          <div 
-            ref={monologueRef} 
-            className="text-[9px] font-mono max-w-[120px] leading-relaxed transition-all duration-300 text-zinc-500/80"
+      {/* Internal Monologue below the bar */}
+      <div className="min-h-[32px] flex items-center justify-center mt-3 select-none">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentState}
+            initial={{ opacity: 0, filter: 'blur(3px)' }}
+            animate={{ opacity: 0.5, filter: 'blur(0px)' }}
+            exit={{ opacity: 0, filter: 'blur(3px)' }}
+            transition={{ duration: 1.5 }}
+            className="font-mono text-[9px] italic text-center text-zinc-400 max-w-[120px] leading-relaxed"
           >
-            "Maybe after this."
-          </div>
-        </div>
+            "{monologueText}"
+          </motion.div>
+        </AnimatePresence>
       </div>
     </div>
   );

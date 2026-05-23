@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 export interface SystemScores {
   attention: number;
-  nervous: number;
+  nervous: number; // Raw load (high = bad)
   identity: number;
   agency: number;
   meaning: number;
@@ -27,13 +27,57 @@ interface ReflectionModalProps {
   sessionDuration: number; // seconds
   onClose: () => void;
   isOpen: boolean;
+  firedEvents: { name: string; category: 'destabilizer' | 'stabilizer' }[];
+  peakLoad?: number;
 }
 
 // ─── Section 1: Environment Report ─────────────────────────────────────────
 
-function buildEnvironmentReport(sliders: SliderSnapshot): string[] {
+function buildEnvironmentReport(
+  sliders: SliderSnapshot,
+  sessionDuration: number,
+  firedEvents: { name: string; category: 'destabilizer' | 'stabilizer' }[],
+  peakLoad?: number
+): string[] {
   const lines: string[] = [];
 
+  // 1. Duration framing
+  if (sessionDuration < 120) {
+    lines.push("This represents a brief environmental exposure.");
+  } else if (sessionDuration <= 300) {
+    lines.push("The subject was exposed for a sustained period.");
+  } else {
+    lines.push("Extended exposure duration amplified cumulative effects.");
+  }
+
+  // 2. Event summary
+  if (firedEvents.length > 0) {
+    const destabilizers = firedEvents.filter(e => e.category === 'destabilizer');
+    const stabilizers = firedEvents.filter(e => e.category === 'stabilizer');
+
+    if (destabilizers.length > 2 && stabilizers.length > 1) {
+      lines.push("The environment alternated between stress and recovery cycles.");
+    } else if (destabilizers.length > 2) {
+      lines.push("Multiple destabilizing events compounded system stress.");
+    } else if (stabilizers.length > 1) {
+      lines.push("Recovery events interrupted degradation trajectories.");
+    } else if (destabilizers.length > 0 && stabilizers.length > 0) {
+      lines.push("The environment alternated between stress and recovery cycles.");
+    }
+  }
+
+  // 3. Peak load note
+  if (peakLoad !== undefined) {
+    if (peakLoad > 80) {
+      lines.push("Peak nervous system load reached critical threshold.");
+    } else if (peakLoad >= 50) {
+      lines.push("Moderate load peaks were recorded during exposure.");
+    } else if (peakLoad < 30) {
+      lines.push("Load remained subcritical throughout.");
+    }
+  }
+
+  // 4. Static environment parameters (cap total sentences at 7)
   // Sleep
   if (sliders.sleepDebt > 60) {
     lines.push("Chronic sleep debt was present throughout.");
@@ -69,8 +113,7 @@ function buildEnvironmentReport(sliders: SliderSnapshot): string[] {
     lines.push("Physical movement was largely absent from this environment.");
   }
 
-  // Cap at 4 sentences
-  return lines.slice(0, 4);
+  return lines.slice(0, 7);
 }
 
 // ─── Section 2: System Descriptors ─────────────────────────────────────────
@@ -83,9 +126,10 @@ function attentionDescriptor(score: number): string {
 }
 
 function nervousDescriptor(score: number): string {
-  if (score < 30) return "critically overloaded";
-  if (score < 60) return "chronically stressed";
-  if (score < 80) return "manageable";
+  const nervousWellness = 100 - score;
+  if (nervousWellness < 30) return "critically overloaded";
+  if (nervousWellness < 60) return "chronically stressed";
+  if (nervousWellness < 80) return "manageable";
   return "regulated";
 }
 
@@ -145,13 +189,38 @@ function generateInsight(
   scores: SystemScores,
   archetype: string | null
 ): string {
-  // Find two most degraded (lowest end scores)
+  // Convert all scores to wellness metrics (high = good, low = bad)
+  const wellnessScores = {
+    attention: scores.attention,
+    nervous: 100 - scores.nervous,
+    identity: scores.identity,
+    agency: scores.agency,
+    meaning: scores.meaning
+  };
+
+  // ── Recovery Branch Selection Checks (First) ──
+  const isRecovery = Object.values(wellnessScores).filter(s => s > 70).length >= 3;
+
+  if (isRecovery) {
+    if (wellnessScores.meaning < 50) {
+      return "The nervous system stabilized. Agency recovered. But meaning did not follow. Rest without purpose restores capacity without direction.";
+    }
+    if (archetype === "Recovery Cabin") {
+      return "Low stimulation and high physical movement consistently produce this pattern. The nervous system is not resilient by default — it is resilient because the environment stopped attacking it.";
+    }
+    if (archetype === "Meaningful Work") {
+      return "Purpose-structured environments buffer moderate stress effectively. Agency and meaning scores rising together is the signature of environments that give the mind a reason to engage rather than escape.";
+    }
+    return "When the environmental load decreases, the systems do not snap back — they drift back, slowly, the same way they drifted forward into degradation. Recovery is not an event. It is a direction.";
+  }
+
+  // ── Degradation Branch Selection ──
   const entries: [SystemKey, number][] = [
-    ['attention', scores.attention],
-    ['nervous',   scores.nervous],
-    ['identity',  scores.identity],
-    ['agency',    scores.agency],
-    ['meaning',   scores.meaning],
+    ['attention', wellnessScores.attention],
+    ['nervous',   wellnessScores.nervous],
+    ['identity',  wellnessScores.identity],
+    ['agency',    wellnessScores.agency],
+    ['meaning',   wellnessScores.meaning],
   ];
   const sorted = [...entries].sort((a, b) => a[1] - b[1]);
   const [worstKey]        = sorted[0];
@@ -223,8 +292,10 @@ const ReflectionModal = React.memo(function ReflectionModal({
   sessionDuration,
   onClose,
   isOpen,
+  firedEvents,
+  peakLoad,
 }: ReflectionModalProps) {
-  const environmentLines = buildEnvironmentReport(sliderValues);
+  const environmentLines = buildEnvironmentReport(sliderValues, sessionDuration, firedEvents, peakLoad);
   const systemRows       = buildSystemRows(systemStartScores, systemScores);
   const insight          = generateInsight(sliderValues, systemScores, activeArchetype);
 
@@ -350,7 +421,11 @@ const ReflectionModal = React.memo(function ReflectionModal({
                 }}
               >
                 {systemRows.map((row) => {
-                  const delta = row.end - row.start;
+                  const delta = row.label === "NERVOUS SYS" ? (row.start - row.end) : (row.end - row.start);
+                  const isNervous = row.label === "NERVOUS SYS";
+                  const startDisp = isNervous ? row.start : row.start;
+                  const endDisp = isNervous ? row.end : row.end;
+
                   const deltaLabel = delta > 0 ? `+${Math.round(delta)}` : `${Math.round(delta)}`;
                   return (
                     <div
@@ -386,14 +461,14 @@ const ReflectionModal = React.memo(function ReflectionModal({
                           letterSpacing: '0.04em',
                         }}
                       >
-                        <DirectionIndicator start={row.start} end={row.end} />
+                        <DirectionIndicator start={isNervous ? endDisp : startDisp} end={isNervous ? startDisp : endDisp} />
                         {' '}
-                        <span style={{ color: '#3a3a3a' }}>{Math.round(row.start)}</span>
+                        <span style={{ color: '#3a3a3a' }}>{Math.round(startDisp)}</span>
                         <span style={{ color: '#2a2a2a', margin: '0 3px' }}>→</span>
                         <span style={{
                           color: delta < -10 ? '#7a2a29' : delta > 10 ? '#1a5a44' : '#4a4a4a'
                         }}>
-                          {Math.round(row.end)}
+                          {Math.round(endDisp)}
                         </span>
                         <span style={{ color: '#2e2e2e', marginLeft: '6px', fontSize: '10px' }}>
                           ({deltaLabel})

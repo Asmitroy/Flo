@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform, MotionValue } from 'framer-motion';
 import { 
   Volume2, 
@@ -20,7 +20,7 @@ import IdentityCore from './IdentityCore';
 import AgencyMeter from './AgencyMeter';
 import ExistentialDepth from './ExistentialDepth';
 import { ArchetypeSelector } from './ArchetypeSelector';
-import { useNarrativeEvents } from './NarrativeEventEngine';
+import { useNarrativeEvents, DESTABILIZERS } from './NarrativeEventEngine';
 import { useTimeCompression } from './TimeCompressionEngine';
 import ReflectionModal, { type SystemScores, type SliderSnapshot } from './ReflectionModal';
 
@@ -227,6 +227,25 @@ const getScrambledWord = (word: string, wordIdx: number, frameTick: number, load
   }).join("");
 };
 
+const scrambleLogMessage = (fullMessage: string, load: number) => {
+  if (load <= 70) return fullMessage;
+  
+  // Match prefix like "[sys] ", "[warn] ", "[err] ", "[CRIT] "
+  const prefixMatch = fullMessage.match(/^(\[[a-zA-Z]+\]\s+)(.*)$/);
+  if (!prefixMatch) return fullMessage;
+  
+  const prefix = prefixMatch[1];
+  const body = prefixMatch[2];
+  
+  // Use a pseudo-random tick for scrambler variation
+  const dummyTick = Math.floor(performance.now() / 80);
+  const scrambledBody = body.split(" ").map((word, wordIdx) => {
+    return getScrambledWord(word, wordIdx, dummyTick, load);
+  }).join(" ");
+  
+  return `${prefix}${scrambledBody}`;
+};
+
 const getWordOpacity = (wordIdx: number, frameTick: number, load: number) => {
   if (load < 60) return 1;
   const flickerChance = (load - 60) / 40 * 0.4;
@@ -367,6 +386,10 @@ SimulationSlider.displayName = 'SimulationSlider';
 
 interface HudTelemetryProps {
   nervousSystemLoad: MotionValue<number>;
+  identityCoherence: MotionValue<number>;
+  agencyScore: MotionValue<number>;
+  meaningScore: MotionValue<number>;
+  systemStartScores: SystemScores;
   isRebooting: boolean;
   isCompressionActive?: boolean;
   elapsedTime?: { hours: number, days: number, months: number, years: number };
@@ -374,32 +397,90 @@ interface HudTelemetryProps {
 
 const HudTelemetry = React.memo(({ 
   nervousSystemLoad, 
+  identityCoherence,
+  agencyScore,
+  meaningScore,
+  systemStartScores,
   isRebooting,
   isCompressionActive = false,
   elapsedTime
 }: HudTelemetryProps) => {
-  const [phase, setPhase] = useState<'normal' | 'warn' | 'crit'>('normal');
+  const [nrvScore, setNrvScore] = useState(nervousSystemLoad.get());
+  const [idnScore, setIdnScore] = useState(identityCoherence.get());
+  const [agcScore, setAgcScore] = useState(agencyScore.get());
+  const [mngScore, setMngScore] = useState(meaningScore.get());
 
   useEffect(() => {
-    const unsub = nervousSystemLoad.on("change", (latest) => {
-      const newPhase = latest > 75 ? 'crit' : (latest > 40 ? 'warn' : 'normal');
-      if (newPhase !== phase) {
-        setPhase(newPhase);
-      }
-    });
-    return () => unsub();
-  }, [nervousSystemLoad, phase]);
+    const unsubNrv = nervousSystemLoad.on("change", (v) => setNrvScore(v));
+    const unsubIdn = identityCoherence.on("change", (v) => setIdnScore(v));
+    const unsubAgc = agencyScore.on("change", (v) => setAgcScore(v));
+    const unsubMng = meaningScore.on("change", (v) => setMngScore(v));
 
-  const integrityWidth = useTransform(nervousSystemLoad, (load) => `${Math.max(10, 100 - load * 0.89)}%`);
-  const integrityColor = useTransform(nervousSystemLoad, (load) => load > 75 ? '#f43f5e' : '#6366f1');
-  const integrityText = useTransform(nervousSystemLoad, (load) => `${Math.max(10.2, (100 - load * 0.89)).toFixed(1)}%`);
+    return () => {
+      unsubNrv();
+      unsubIdn();
+      unsubAgc();
+      unsubMng();
+    };
+  }, [nervousSystemLoad, identityCoherence, agencyScore, meaningScore]);
 
-  const driftWidth = useTransform(nervousSystemLoad, (load) => `${Math.min(100, load * 1.4)}%`);
-  const driftColor = useTransform(nervousSystemLoad, (load) => load > 60 ? '#f43f5e' : (load > 30 ? '#f59e0b' : '#10b981'));
-  const driftText = useTransform(nervousSystemLoad, (load) => `${(load * 1.4).toFixed(1)}%`);
+  const attScore = 100 - nrvScore;
+  const nrvWellness = 100 - nrvScore;
 
-  const fluxWidth = useTransform(nervousSystemLoad, (load) => `${Math.min(100, 10 + load * 0.9)}%`);
-  const fluxText = useTransform(nervousSystemLoad, (load) => `${(1.0 + (load * 0.15)).toFixed(1)}x`);
+  const systems = [
+    { id: 'attention', label: 'ATTENTION', score: attScore, start: systemStartScores.attention },
+    { id: 'nervous', label: 'NERVOUS SYS', score: nrvWellness, start: systemStartScores.nervous },
+    { id: 'identity', label: 'IDENTITY', score: idnScore, start: systemStartScores.identity },
+    { id: 'agency', label: 'AGENCY', score: agcScore, start: systemStartScores.agency },
+    { id: 'meaning', label: 'MEANING', score: mngScore, start: systemStartScores.meaning },
+  ];
+
+  // Helper to format deltas
+  const renderDelta = (current: number, start: number, id: string) => {
+    const startVal = id === 'nervous' ? (100 - start) : start;
+    const diff = current - startVal;
+    const rounded = Math.round(diff);
+    if (Math.abs(rounded) <= 3) {
+      return <span className="text-zinc-600 text-[8px] font-mono font-normal">{(rounded >= 0 ? `+${rounded}` : `${rounded}`)}</span>;
+    }
+    if (rounded > 3) {
+      return <span className="text-emerald-500 font-mono text-[8px] font-bold">+{rounded}</span>;
+    }
+    return <span className="text-red-500 font-mono text-[8px] font-bold">{rounded}</span>;
+  };
+
+  // Find lowest system score for Heuristic Readout text
+  const degraded = [
+    { id: 'attention', score: attScore },
+    { id: 'nervous', score: nrvWellness },
+    { id: 'identity', score: idnScore },
+    { id: 'agency', score: agcScore },
+    { id: 'meaning', score: mngScore }
+  ].filter(s => s.score <= 70);
+
+  let readoutText = "COGNITION NORMAL. Syntactic links at peak density. Letter spacing baseline calibrated.";
+  let readoutColor = "text-zinc-500";
+
+  if (degraded.length > 0) {
+    const lowest = [...degraded].sort((a, b) => a.score - b.score)[0];
+    if (lowest.score < 30) {
+      readoutColor = "text-red-400/80 animate-pulse font-bold";
+    } else {
+      readoutColor = "text-amber-400/80";
+    }
+
+    if (lowest.id === 'attention') {
+      readoutText = "Attention fragmentation elevated. Context switching exceeding threshold.";
+    } else if (lowest.id === 'nervous') {
+      readoutText = "Nervous system load critical. Autonomic overdrive active.";
+    } else if (lowest.id === 'identity') {
+      readoutText = "Identity boundary dilation detected. Ego-coherence drifting.";
+    } else if (lowest.id === 'agency') {
+      readoutText = "Initiation failure detected. Motivational substrate depleted.";
+    } else if (lowest.id === 'meaning') {
+      readoutText = "Existential anchoring weak. Purpose signal below coherence threshold.";
+    }
+  }
 
   return (
     <section className="lg:col-span-1 bg-zinc-950/40 border border-zinc-900/60 rounded-lg p-5 backdrop-blur-lg flex flex-col justify-between select-none">
@@ -407,7 +488,7 @@ const HudTelemetry = React.memo(({
         <div className="flex items-center space-x-2 mb-6 border-b border-zinc-900 pb-2">
           <Cpu className="w-4 h-4 text-zinc-500" />
           <h3 className="font-display text-[11px] uppercase tracking-wider text-zinc-400 font-bold">
-            Neural Telemetry
+            LIVE SYSTEM STATUS
           </h3>
         </div>
 
@@ -423,50 +504,32 @@ const HudTelemetry = React.memo(({
         )}
 
         <div className="space-y-4">
-          <div>
-            <div className="flex justify-between text-[10px] font-mono text-zinc-500 mb-1">
-              <span>NEURAL INTEGRITY</span>
-              <span className={phase === 'crit' ? 'text-red-500 font-bold' : 'text-zinc-300'}>
-                {isRebooting ? "REBOOTING..." : <motion.span>{integrityText}</motion.span>}
-              </span>
-            </div>
-            <div className="w-full bg-zinc-900/60 h-1 rounded overflow-hidden">
-              <motion.div 
-                className="h-full"
-                style={{ width: integrityWidth, backgroundColor: integrityColor }}
-              />
-            </div>
-          </div>
+          {systems.map((sys) => {
+            const isCrit = sys.score < 30;
+            const isDeg = sys.score >= 30 && sys.score <= 70;
 
-          <div>
-            <div className="flex justify-between text-[10px] font-mono text-zinc-500 mb-1">
-              <span>MEMETIC DRIFT</span>
-              <span className={phase !== 'normal' ? 'text-amber-500 font-bold' : 'text-zinc-300'}>
-                {isRebooting ? "0.0%" : <motion.span>{driftText}</motion.span>}
-              </span>
-            </div>
-            <div className="w-full bg-zinc-900/60 h-1 rounded overflow-hidden">
-              <motion.div 
-                className="h-full"
-                style={{ width: driftWidth, backgroundColor: driftColor }}
-              />
-            </div>
-          </div>
-
-          <div>
-            <div className="flex justify-between text-[10px] font-mono text-zinc-500 mb-1">
-              <span>DOPAMINERGIC FLUX</span>
-              <span className={phase === 'crit' ? 'text-red-500 font-bold' : 'text-zinc-300'}>
-                {isRebooting ? "1.0x" : <motion.span>{fluxText}</motion.span>}
-              </span>
-            </div>
-            <div className="w-full bg-zinc-900/60 h-1 rounded overflow-hidden">
-              <motion.div 
-                className="h-full bg-cyan-500"
-                style={{ width: fluxWidth }}
-              />
-            </div>
-          </div>
+            return (
+              <div key={sys.id}>
+                <div className="flex justify-between text-[10px] font-mono text-zinc-500 mb-1">
+                  <span>{sys.label}</span>
+                  <div className="flex items-center space-x-1">
+                    <span className={isCrit ? 'text-rose-500 font-bold animate-pulse' : (isDeg ? 'text-orange-400 font-bold' : 'text-zinc-300')}>
+                      {isRebooting ? "..." : `${Math.round(sys.score)}%`}
+                    </span>
+                    {!isRebooting && renderDelta(sys.score, sys.start, sys.id)}
+                  </div>
+                </div>
+                <div className="w-full bg-zinc-900/60 h-1.5 rounded overflow-hidden">
+                  <motion.div 
+                    className="h-full rounded"
+                    animate={{ width: `${Math.max(2, sys.score)}%` }}
+                    transition={{ duration: 0.3 }}
+                    style={{ backgroundColor: isCrit ? '#e11d48' : (isDeg ? '#d97706' : '#e4e4e7') }}
+                  />
+                </div>
+              </div>
+            );
+          })}
 
           <div className="pt-2">
             <div className="bg-black/40 border border-zinc-900 rounded p-3 text-[10px] font-mono space-y-1.5 leading-relaxed text-zinc-500">
@@ -474,26 +537,20 @@ const HudTelemetry = React.memo(({
                 <Info className="w-3 h-3 text-indigo-400" />
                 <span className="font-bold">HEURISTIC READOUT</span>
               </div>
-              {phase === 'crit' ? (
-                <p className="text-red-400/80 animate-pulse">
-                  CRITICAL: Neural coherence boundary collapsed. Words escaping syntax frame. Scramble sequence active.
-                </p>
-              ) : phase === 'warn' ? (
-                <p className="text-amber-400/80">
-                  WARNING: Mild cognitive drift active. Target text displaying structural dilation.
-                </p>
-              ) : (
-                <p className="text-zinc-500">
-                  COGNITION NORMAL. Syntactic links at peak density. Letter spacing baseline calibrated.
-                </p>
-              )}
+              <p className={readoutColor}>
+                {isRebooting ? "REBOOTING..." : readoutText}
+              </p>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="border-t border-zinc-900/60 pt-4 mt-6">
-        <div className="flex items-center space-x-2 text-[10px] font-mono text-zinc-600">
+      <div className="border-t border-zinc-900/60 pt-4 mt-6 flex flex-col space-y-2">
+        <div className="flex justify-between text-[10px] font-mono text-zinc-500">
+          <span>TRUE LOAD:</span>
+          <span className="text-zinc-300 font-bold">{isRebooting ? "0%" : `${Math.round(nrvScore)}%`}</span>
+        </div>
+        <div className="flex items-center space-x-2 text-[9px] font-mono text-zinc-700">
           <Fingerprint className="w-3.5 h-3.5" />
           <span className="uppercase">Identity anchor v8.2</span>
         </div>
@@ -504,93 +561,166 @@ const HudTelemetry = React.memo(({
 
 HudTelemetry.displayName = 'HudTelemetry';
 
-interface NeuralOrbProps {
-  nervousSystemLoad: MotionValue<number>;
+interface CognitiveWeatherProps {
+  attention: MotionValue<number>;
+  nervousLoad: MotionValue<number>;
+  identity: MotionValue<number>;
+  agency: MotionValue<number>;
+  meaning: MotionValue<number>;
 }
 
-const NeuralOrb = React.memo(({ nervousSystemLoad }: NeuralOrbProps) => {
-  const [isCritical, setIsCritical] = useState(false);
-  const [isHighLoad, setIsHighLoad] = useState(false);
-  const [isCoreCritical, setIsCoreCritical] = useState(false);
+const CognitiveWeather = React.memo(({
+  attention,
+  nervousLoad,
+  identity,
+  agency,
+  meaning
+}: CognitiveWeatherProps) => {
+  const [weather, setWeather] = useState<'clear' | 'overcast' | 'storm' | 'void'>('clear');
 
   useEffect(() => {
-    const unsub = nervousSystemLoad.on("change", (latest) => {
-      setIsCritical(latest > 75);
-      setIsHighLoad(latest > 60);
-      setIsCoreCritical(latest > 70);
-    });
-    return () => unsub();
-  }, [nervousSystemLoad]);
+    const evaluate = () => {
+      const att = attention.get();
+      const nrv = nervousLoad.get();
+      const idn = identity.get();
+      const agc = agency.get();
+      const mng = meaning.get();
 
-  const orbWidthHeight = useTransform(nervousSystemLoad, (load) => load > 60 ? '160px' : '100px');
-  const orbBackground = useTransform(nervousSystemLoad, (load) => {
-    if (load > 75) return 'radial-gradient(circle, #f43f5e 20%, #e11d48 70%)';
-    if (load > 45) return 'radial-gradient(circle, #f59e0b 20%, #d97706 70%)';
-    return 'radial-gradient(circle, #818cf8 20%, #4f46e5 70%)';
-  });
+      if (mng < 30 && agc < 30) {
+        return 'void';
+      }
+      if (att < 40 || nrv > 70 || idn < 40 || agc < 40 || mng < 40) {
+        return 'storm';
+      }
+      if (att <= 70 || nrv >= 30 || idn <= 70 || agc <= 70 || mng <= 70) {
+        return 'overcast';
+      }
+      return 'clear';
+    };
 
-  const coreBorderColor = useTransform(nervousSystemLoad, (load) => {
-    if (load > 75) return 'rgba(244, 63, 94, 0.4)';
-    if (load > 40) return 'rgba(245, 158, 11, 0.3)';
-    return 'rgba(129, 140, 248, 0.2)';
-  });
+    const updateWeather = () => {
+      const nextWeather = evaluate();
+      setWeather(prev => {
+        if (prev !== nextWeather) return nextWeather;
+        return prev;
+      });
+    };
 
-  const coreBorderStyle = useTransform<number, React.CSSProperties['borderStyle']>(
-    nervousSystemLoad, 
-    (load) => (load > 60 ? 'dashed' : 'solid')
-  );
+    const unsubAtt = attention.on('change', updateWeather);
+    const unsubNrv = nervousLoad.on('change', updateWeather);
+    const unsubIdn = identity.on('change', updateWeather);
+    const unsubAgc = agency.on('change', updateWeather);
+    const unsubMng = meaning.on('change', updateWeather);
+
+    updateWeather();
+
+    return () => {
+      unsubAtt();
+      unsubNrv();
+      unsubIdn();
+      unsubAgc();
+      unsubMng();
+    };
+  }, [attention, nervousLoad, identity, agency, meaning]);
 
   return (
-    <div className="absolute top-8 pointer-events-none select-none flex items-center justify-center w-full h-36">
-      <motion.div 
-        className="rounded-full filter blur-xl opacity-30 absolute will-change-[transform,opacity]"
-        style={{
-          width: orbWidthHeight,
-          height: orbWidthHeight,
-          background: orbBackground,
-        }}
-        animate={isCritical ? {
-          scale: [1, 1.25, 0.9, 1.3, 1],
-          x: [0, 8, -8, 6, 0],
-          y: [0, -6, 8, -4, 0],
-        } : {
-          scale: [1, 1.15, 1],
-          x: 0,
-          y: 0
-        }}
-        transition={isCritical ? {
-          duration: 0.18,
-          repeat: Infinity,
-          ease: "linear"
-        } : {
-          duration: 4,
-          repeat: Infinity,
-          ease: "easeInOut"
-        }}
-      />
+    <div className="absolute top-8 pointer-events-none select-none flex flex-col items-center justify-center w-full h-36">
+      <div className="relative w-24 h-24 flex items-center justify-center">
+        <svg viewBox="0 0 100 100" className="w-20 h-20 overflow-visible">
+          <circle cx="50" cy="50" r="1.5" fill={weather === 'void' ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.7)'} />
+          
+          {weather !== 'void' && (
+            <>
+              <motion.circle
+                cx="50"
+                cy="50"
+                r={weather === 'clear' ? 25 : (weather === 'overcast' ? 30 : 15)}
+                fill="none"
+                stroke={weather === 'clear' ? 'rgba(129, 140, 248, 0.35)' : (weather === 'overcast' ? 'rgba(245, 158, 11, 0.35)' : 'rgba(239, 68, 68, 0.55)')}
+                strokeWidth="1"
+                animate={weather === 'clear' ? {
+                  scale: [1, 1.05, 1],
+                  opacity: [0.3, 0.5, 0.3]
+                } : (weather === 'overcast' ? {
+                  scale: [1, 1.02, 1],
+                  opacity: [0.25, 0.4, 0.25]
+                } : {
+                  scale: [1, 0.5, 1.3, 1],
+                  opacity: [0.6, 0.2, 0.8, 0.6]
+                })}
+                transition={{
+                  duration: weather === 'clear' ? 4 : (weather === 'overcast' ? 5 : 0.8),
+                  repeat: Infinity,
+                  ease: "easeInOut"
+                }}
+              />
+              <motion.circle
+                cx={weather === 'overcast' ? 49 : 50}
+                cy={weather === 'overcast' ? 51 : 50}
+                r={weather === 'clear' ? 50 : (weather === 'overcast' ? 45 : 30)}
+                fill="none"
+                stroke={weather === 'clear' ? 'rgba(129, 140, 248, 0.25)' : (weather === 'overcast' ? 'rgba(245, 158, 11, 0.25)' : 'rgba(239, 68, 68, 0.45)')}
+                strokeWidth="0.8"
+                animate={weather === 'clear' ? {
+                  scale: [1, 1.08, 1],
+                  opacity: [0.2, 0.4, 0.2]
+                } : (weather === 'overcast' ? {
+                  scale: [1, 1.04, 1],
+                  opacity: [0.15, 0.3, 0.15]
+                } : {
+                  scale: [1.2, 0.4, 1.1, 1.2],
+                  opacity: [0.7, 0.1, 0.9, 0.7]
+                })}
+                transition={{
+                  duration: weather === 'clear' ? 6 : (weather === 'overcast' ? 7 : 0.6),
+                  repeat: Infinity,
+                  ease: "easeInOut"
+                }}
+              />
+              <motion.circle
+                cx={weather === 'overcast' ? 51 : 50}
+                cy={weather === 'overcast' ? 49 : 50}
+                r={weather === 'clear' ? 75 : (weather === 'overcast' ? 60 : 45)}
+                fill="none"
+                stroke={weather === 'clear' ? 'rgba(129, 140, 248, 0.15)' : (weather === 'overcast' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(239, 68, 68, 0.35)')}
+                strokeWidth="0.6"
+                animate={weather === 'clear' ? {
+                  scale: [1, 1.1, 1],
+                  opacity: [0.1, 0.25, 0.1]
+                } : (weather === 'overcast' ? {
+                  scale: [1, 1.06, 1],
+                  opacity: [0.1, 0.2, 0.1]
+                } : {
+                  scale: [1.5, 0.3, 1.2, 1.5],
+                  opacity: [0.8, 0.05, 0.95, 0.8]
+                })}
+                transition={{
+                  duration: weather === 'clear' ? 8 : (weather === 'overcast' ? 9 : 0.4),
+                  repeat: Infinity,
+                  ease: "easeInOut"
+                }}
+              />
+            </>
+          )}
+        </svg>
+      </div>
 
-      <motion.div 
-        className="border rounded-full will-change-transform"
-        style={{
-          width: '60px',
-          height: '60px',
-          borderColor: coreBorderColor,
-          borderStyle: coreBorderStyle,
-        }}
-        animate={{
-          rotate: 360,
-          scale: isCoreCritical ? [1, 1.3, 0.8, 1] : 1
-        }}
-        transition={{
-          rotate: { duration: isHighLoad ? 2 : 12, repeat: Infinity, ease: "linear" },
-          scale: { duration: 0.4, repeat: Infinity }
-        }}
-      />
+      <span className={`text-[10px] font-mono font-bold tracking-widest mt-2 uppercase transition-colors duration-500 ${
+        weather === 'clear' ? 'text-indigo-400' :
+        weather === 'overcast' ? 'text-amber-500/80' :
+        weather === 'storm' ? 'text-rose-500 animate-pulse' :
+        'text-zinc-600'
+      }`}>
+        {weather === 'clear' && "COGNITIVE CLARITY"}
+        {weather === 'overcast' && "ELEVATED LOAD"}
+        {weather === 'storm' && "COGNITIVE STORM"}
+        {weather === 'void' && "DISSOCIATIVE STATE"}
+      </span>
     </div>
   );
 });
 
-NeuralOrb.displayName = 'NeuralOrb';
+CognitiveWeather.displayName = 'CognitiveWeather';
 
 interface DiagnosticReadoutProps {
   stimulationLevel: MotionValue<number>;
@@ -707,55 +837,74 @@ interface RealtimeLogsProps {
 }
 
 const RealtimeLogs = React.memo(({ logs, nervousSystemLoad, isRebooting }: RealtimeLogsProps) => {
-  const currentLoad = nervousSystemLoad.get();
+  const [currentLoad, setCurrentLoad] = useState(nervousSystemLoad.get());
+
+  useEffect(() => {
+    const unsub = nervousSystemLoad.on("change", (v) => setCurrentLoad(v));
+    return () => unsub();
+  }, [nervousSystemLoad]);
+
   return (
-    <section className="lg:col-span-1 bg-zinc-950/40 border border-zinc-900/60 rounded-lg p-5 backdrop-blur-lg flex flex-col justify-between select-none">
-      <div className="flex-1 flex flex-col h-full">
-        <div className="flex items-center space-x-2 mb-4 border-b border-zinc-900 pb-2">
-          <Terminal className="w-4 h-4 text-zinc-500" />
-          <h3 className="font-display text-[11px] uppercase tracking-wider text-zinc-400 font-bold">
-            Console Monitor
-          </h3>
+    <section className="lg:col-span-1 bg-zinc-950/40 border border-zinc-900/60 rounded-lg p-4 backdrop-blur-lg flex flex-col justify-between select-none h-full min-h-[640px]">
+      <div className="flex flex-col h-full space-y-4 overflow-hidden">
+        {/* Top: Compact Attention Graph */}
+        <div className="border-b border-zinc-900/60 pb-3 flex flex-col items-center">
+          <div className="text-[9px] font-mono text-zinc-500 uppercase tracking-widest mb-1">
+            Attention Map
+          </div>
+          <div className="w-full max-h-[140px] flex items-center justify-center overflow-hidden">
+            <AttentionGraph load={nervousSystemLoad} />
+          </div>
         </div>
 
-        <div className="flex-1 font-mono text-[10px] space-y-3.5 overflow-hidden">
-          <AnimatePresence initial={false}>
-            {logs.map((log) => {
-              let textCol = "text-zinc-500";
-              if (log.type === "success") textCol = "text-emerald-500/80";
-              else if (log.type === "warn") textCol = "text-amber-500/80";
-              else if (log.type === "crit") textCol = "text-rose-500/95 font-bold animate-pulse";
-              else if (log.type === "system") textCol = "text-indigo-400/80";
+        {/* Bottom: Console Monitor */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex items-center space-x-2 mb-2 border-b border-zinc-900 pb-2">
+            <Terminal className="w-3.5 h-3.5 text-zinc-500" />
+            <h3 className="font-display text-[10px] uppercase tracking-wider text-zinc-400 font-bold">
+              Console Monitor
+            </h3>
+          </div>
 
-              let logText = log.text;
-              if (currentLoad > 50 && log.type !== "crit" && !isRebooting) {
-                logText = log.text.split("").map((c) => {
-                  if (Math.random() < (currentLoad - 50) / 100 * 0.4) {
-                    return GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
-                  }
-                  return c;
-                }).join("");
-              }
+          <div className="flex-1 font-mono text-[9px] space-y-2 overflow-hidden">
+            <AnimatePresence initial={false}>
+              {logs.map((log) => {
+                let textCol = "text-zinc-500";
+                if (log.type === "success") textCol = "text-emerald-500/80";
+                else if (log.type === "warn") textCol = "text-amber-500/80";
+                else if (log.type === "crit") textCol = "text-rose-500/95 font-bold animate-pulse";
+                else if (log.type === "system") textCol = "text-indigo-400/80";
 
-              return (
-                <motion.div
-                  key={log.id}
-                  initial={{ opacity: 0, x: 10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0 }}
-                  className={`${textCol} break-all leading-relaxed`}
-                >
-                  &gt; {logText}
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
+                let logText = log.text;
+                if (currentLoad > 50 && log.type !== "crit" && !isRebooting) {
+                  logText = log.text.split("").map((c) => {
+                    if (Math.random() < (currentLoad - 50) / 100 * 0.4) {
+                      return GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
+                    }
+                    return c;
+                  }).join("");
+                }
+
+                return (
+                  <motion.div
+                    key={log.id}
+                    initial={{ opacity: 0, x: 10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0 }}
+                    className={`${textCol} break-all leading-normal`}
+                  >
+                    &gt; {logText}
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
 
-      <div className="border-t border-zinc-900/60 pt-4 mt-6">
+      <div className="border-t border-zinc-900/60 pt-3 mt-4">
         <div className="text-[8px] font-mono text-zinc-700 leading-tight">
-          HOST: LOCALHOST // NODE-ID: FLO-D72
+          HOST: LOCALHOST // FLO-D72
           <br />
           SECTOR CHECK: CALIBRATED (100%)
         </div>
@@ -903,6 +1052,8 @@ export default function CognitiveSimulator() {
   const agencyScore = useMotionValue<number>(65);
   const meaningScore = useMotionValue<number>(75);
 
+  const attentionScore = useTransform(nervousSystemLoad, (load) => 100 - load);
+
   const [isMuted, setIsMuted] = useState<boolean>(true);
   const [isRebooting, setIsRebooting] = useState<boolean>(false);
   const [isReady, setIsReady] = useState<boolean>(false);
@@ -919,6 +1070,21 @@ export default function CognitiveSimulator() {
     agency: 65,
     meaning: 75,
   });
+
+  const [compressionSpeed, setCompressionSpeed] = useState<'fast' | 'normal' | 'slow'>('fast');
+  const [sessionEventsHistory, setSessionEventsHistory] = useState<{ name: string; category: 'destabilizer' | 'stabilizer' }[]>([]);
+  
+  const sessionPeakLoad = useRef<number>(1);
+
+  // Track peak load during the session
+  useEffect(() => {
+    const unsub = nervousSystemLoad.on('change', (v) => {
+      if (v > sessionPeakLoad.current) {
+        sessionPeakLoad.current = v;
+      }
+    });
+    return () => unsub();
+  }, [nervousSystemLoad]);
 
   // Helper: snapshot current system scores
   const captureStartScores = React.useCallback((): SystemScores => ({
@@ -956,7 +1122,17 @@ export default function CognitiveSimulator() {
     identityCoherence,
     agencyScore,
     meaningScore
-  }, isRebooting);
+  }, isRebooting, compressionSpeed);
+
+  // Custom callback to record event logs into the session history
+  const handleEventTriggered = useCallback((eventName: string) => {
+    logCompressionEvent(eventName);
+
+    const foundDestabilizer = DESTABILIZERS.find(e => e.name === eventName);
+    const category = foundDestabilizer ? 'destabilizer' : 'stabilizer';
+
+    setSessionEventsHistory(prev => [...prev, { name: eventName, category }]);
+  }, [logCompressionEvent]);
 
   const activeEvents = useNarrativeEvents({
     stimulationLevel,
@@ -967,7 +1143,7 @@ export default function CognitiveSimulator() {
     meaningScore,
     agencyScore,
     nervousSystemLoad
-  }, isRebooting, tickInterval, logCompressionEvent);
+  }, isRebooting, tickInterval, handleEventTriggered);
 
   // Quadrant matrix state that only re-renders the headers when boundaries are crossed
   const [quadrant, setQuadrant] = useState({
@@ -1155,33 +1331,62 @@ export default function CognitiveSimulator() {
     
     let timerId: ReturnType<typeof setTimeout>;
     
+    const calmMessages = [
+      "[sys] scanning synaptosomes...",
+      "[sys] dopamine receptors: calibrated",
+      "[sys] cognitive buffer load: normal",
+      "[sys] identity matrix: stable",
+      "[sys] attention threads: coherent",
+      "[sys] memory consolidation: active",
+      "[sys] prefrontal bandwidth: optimal"
+    ];
+
+    const degradingMessages = [
+      "[warn] cortisol elevation detected",
+      "[warn] attention switching: elevated",
+      "[warn] working memory: fragmenting",
+      "[sys] recalibrating...",
+      "[err] focus lock: failed"
+    ];
+    
     const runLogCycle = () => {
       const load = nervousSystemLoad.get();
       
       setLogs((prevLogs) => {
         const nextId = prevLogs.length + 1;
-        let newLog;
+        let newLogText = "";
+        let newLogType = "system";
 
-        if (load < 20) {
-          const normalSystemLogs = [
-            "scanning synaptosomes...",
-            "cognitive buffer load: normal",
-            "hegemony check: verified",
-            "dopamine receptors: calibrated"
-          ];
-          const text = normalSystemLogs[Math.floor(Math.random() * normalSystemLogs.length)];
-          newLog = { id: nextId, text: `[sys] ${text}`, type: "system" };
+        if (load < 30) {
+          newLogText = calmMessages[Math.floor(Math.random() * calmMessages.length)];
+          newLogType = "system";
+        } else if (load <= 70) {
+          const pool = [...calmMessages, ...degradingMessages];
+          newLogText = pool[Math.floor(Math.random() * pool.length)];
+          if (newLogText.startsWith("[warn]")) {
+            newLogType = "warn";
+          } else if (newLogText.startsWith("[err]")) {
+            newLogType = "crit";
+          } else {
+            newLogType = "system";
+          }
         } else {
-          const text = WARNING_POOL[Math.floor(Math.random() * WARNING_POOL.length)];
-          const severity = load > 75 ? "crit" : (load > 45 ? "warn" : "info");
+          // Overdrive (load > 70)
+          // 1. Lowercase warnings from WARNING_POOL and prefix with [err]
+          const formattedWarnings = WARNING_POOL.map(w => `[err] ${w.toLowerCase()}`);
+          // 2. Map calm and degrading messages to have [err] prefix
+          const errCalm = calmMessages.map(m => m.replace(/^\[sys\]/, "[err]"));
+          const errDegrading = degradingMessages.map(m => m.replace(/^\[(sys|warn)\]/, "[err]"));
           
-          let prefix = "[info] ";
-          if (severity === "crit") prefix = "[CRIT] ";
-          else if (severity === "warn") prefix = "[WARN] ";
+          const pool = [...errCalm, ...errDegrading, ...formattedWarnings];
+          newLogText = pool[Math.floor(Math.random() * pool.length)];
+          newLogType = "crit";
 
-          newLog = { id: nextId, text: `${prefix}${text}`, type: severity };
+          // Apply corruption
+          newLogText = scrambleLogMessage(newLogText, load);
         }
 
+        const newLog = { id: nextId, text: newLogText, type: newLogType };
         const updated = [...prevLogs, newLog];
         if (updated.length > 8) updated.shift();
         return updated;
@@ -1331,6 +1536,8 @@ export default function CognitiveSimulator() {
     setIsReady(true);
     setSystemStartScores(captureStartScores());
     setSessionDuration(0);
+    sessionPeakLoad.current = nervousSystemLoad.get();
+    setSessionEventsHistory([]);
   };
 
   const handleReboot = () => {
@@ -1360,6 +1567,8 @@ export default function CognitiveSimulator() {
       setIsRebooting(false);
       setActiveArchetype(null);
       setSessionDuration(0);
+      sessionPeakLoad.current = 1;
+      setSessionEventsHistory([]);
       setSystemStartScores({
         attention: 65, nervous: 1, identity: 100, agency: 65, meaning: 75,
       });
@@ -1493,6 +1702,10 @@ export default function CognitiveSimulator() {
         {/* Left HUD Panel - Diagnostics */}
         <HudTelemetry 
           nervousSystemLoad={nervousSystemLoad} 
+          identityCoherence={identityCoherence}
+          agencyScore={agencyScore}
+          meaningScore={meaningScore}
+          systemStartScores={systemStartScores}
           isRebooting={isRebooting} 
           isCompressionActive={isCompressionActive}
           elapsedTime={elapsedSimulatedTime}
@@ -1501,13 +1714,19 @@ export default function CognitiveSimulator() {
         {/* Center Panel - The Core Experiment */}
         <section className="col-span-1 lg:col-span-4 flex flex-col justify-between items-center bg-zinc-950/20 border border-zinc-900/60 rounded-lg p-6 backdrop-blur-sm relative">
           
-          {/* Neural Orb/Core graphic */}
-          <NeuralOrb nervousSystemLoad={nervousSystemLoad} />
+          {/* Cognitive Weather visualizer */}
+          <CognitiveWeather 
+            attention={attentionScore}
+            nervousLoad={nervousSystemLoad}
+            identity={identityCoherence}
+            agency={agencyScore}
+            meaning={meaningScore}
+          />
 
-          {/* Symmetrical 4-Column Layout: Text Block, Agency Meter, Existential Depth, & Attention Graph */}
+          {/* Symmetrical 3-Column Layout: Text Block, Agency Meter, & Existential Depth */}
           <div className="w-full flex-1 grid grid-cols-1 md:grid-cols-12 gap-6 items-center my-12 max-w-[80rem] min-h-[460px]">
             {/* Column 1: Text Block */}
-            <div className="flex items-center justify-start h-full px-4 select-text md:col-span-4 relative">
+            <div className="flex items-center justify-start h-full px-4 select-text md:col-span-6 relative">
               <IdentityCore coherence={identityCoherence} />
 
               <div className="flex flex-col space-y-6 max-w-md relative z-10 w-full">
@@ -1549,18 +1768,13 @@ export default function CognitiveSimulator() {
             </div>
 
             {/* Column 2: Agency Meter */}
-            <div className="flex items-center justify-center h-full md:col-span-2 relative">
+            <div className="flex items-center justify-center h-full md:col-span-3 relative">
               <AgencyMeter agencyScore={agencyScore} />
             </div>
 
             {/* Column 3: Existential Depth */}
-            <div className="flex items-center justify-center h-full md:col-span-2 relative">
+            <div className="flex items-center justify-center h-full md:col-span-3 relative">
               <ExistentialDepth meaningScore={meaningScore} />
-            </div>
-
-            {/* Column 4: Attention Graph */}
-            <div className="flex items-center justify-center w-full h-full relative pl-0 md:pl-6 select-none md:col-span-4">
-              <AttentionGraph load={nervousSystemLoad} />
             </div>
           </div>
 
@@ -1686,6 +1900,22 @@ export default function CognitiveSimulator() {
                   
                   {/* Mode Selector and Controls */}
                   <div className="flex items-center space-x-2">
+                    <div className="flex items-center bg-black/45 border border-zinc-900 p-0.5 rounded-none">
+                      <button
+                        onClick={() => {
+                          setCompressionSpeed(prev => {
+                            if (prev === 'fast') return 'normal';
+                            if (prev === 'normal') return 'slow';
+                            return 'fast';
+                          });
+                        }}
+                        disabled={isRebooting}
+                        className="px-2.5 py-1 text-[8px] hover:bg-zinc-900 text-zinc-400 hover:text-zinc-200 transition-colors uppercase cursor-pointer rounded-none border border-transparent hover:border-zinc-800 font-bold"
+                      >
+                        SPEED: {compressionSpeed.toUpperCase()}
+                      </button>
+                    </div>
+
                     {!isCompressionActive ? (
                       <div className="flex items-center space-x-1 bg-black/45 border border-zinc-900 p-0.5 rounded-none">
                         <button
@@ -1969,6 +2199,8 @@ export default function CognitiveSimulator() {
         sliderValues={getSliderSnapshot()}
         activeArchetype={activeArchetype}
         sessionDuration={sessionDuration}
+        firedEvents={sessionEventsHistory}
+        peakLoad={sessionPeakLoad.current}
       />
     </div>
   );

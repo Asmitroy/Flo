@@ -27,10 +27,11 @@ export interface AutopsyReport {
   initials: { load: number; coherence: number; agency: number; meaning: number };
 }
 
+// Target experience durations at SPEED = FAST
 export const COMPRESSION_MODES = {
-  day: { label: "1 Day", totalHours: 24, realDurationMs: 30000, tickInterval: 125, driftStepMultiplier: 1 },
-  month: { label: "1 Month", totalHours: 720, realDurationMs: 180000, tickInterval: 25, driftStepMultiplier: 1 },
-  year: { label: "1 Year", totalHours: 8640, realDurationMs: 600000, tickInterval: 16, driftStepMultiplier: 2.5 }
+  day: { label: "1 Day", totalHours: 24, realDurationMs: 20000, driftStepMultiplier: 1.0 },
+  month: { label: "1 Month", totalHours: 720, realDurationMs: 90000, driftStepMultiplier: 5.5 },
+  year: { label: "1 Year", totalHours: 8640, realDurationMs: 240000, driftStepMultiplier: 25.0 }
 };
 
 let globalStartCompression: ((mode: 'day' | 'month' | 'year') => void) | null = null;
@@ -79,7 +80,11 @@ interface SimulatorValues {
   meaningScore: MotionValue<number>;
 }
 
-export function useTimeCompression(sliderValues: SimulatorValues, disabled = false) {
+export function useTimeCompression(
+  sliderValues: SimulatorValues, 
+  disabled = false,
+  compressionSpeed: 'fast' | 'normal' | 'slow' = 'fast'
+) {
   const [mode, setMode] = useState<CompressionMode>('none');
   const [isPaused, setIsPaused] = useState<boolean>(false);
   const [elapsedHours, setElapsedHours] = useState<number>(0);
@@ -97,8 +102,14 @@ export function useTimeCompression(sliderValues: SimulatorValues, disabled = fal
   const isRunning = isActive && !isPaused;
 
   const modeConfig = mode !== 'none' ? COMPRESSION_MODES[mode] : null;
-  const tickInterval = modeConfig ? modeConfig.tickInterval : 500;
-  const driftStepMultiplier = modeConfig ? modeConfig.driftStepMultiplier : 1;
+
+  // Resolve speed multiplier factor
+  const speedMultiplier = compressionSpeed === 'slow' ? 4.0 : (compressionSpeed === 'normal' ? 2.0 : 1.0);
+
+  // Tick interval of simulation drift is 100ms when compression is active, else 500ms
+  const tickInterval = isActive ? 100 : 500;
+  // Drift step multiplier scales down as simulation speed scales down (longer duration)
+  const driftStepMultiplier = modeConfig ? (modeConfig.driftStepMultiplier / speedMultiplier) : 1;
 
   // Clear compression if simulator reboots
   useEffect(() => {
@@ -114,7 +125,7 @@ export function useTimeCompression(sliderValues: SimulatorValues, disabled = fal
     }
   }, [disabled]);
 
-  // Synchronous ref tracker to prevent stale state in frame callbacks
+  // Synchronous ref tracker to prevent stale state in callbacks
   const trackingRef = useRef({
     mode,
     elapsedHours,
@@ -188,30 +199,6 @@ export function useTimeCompression(sliderValues: SimulatorValues, disabled = fal
     });
   }, [modeConfig]);
 
-  // Track telemetry changes (peaks & troughs) continuously during execution
-  useEffect(() => {
-    if (!isRunning) return;
-
-    const interval = setInterval(() => {
-      const load = sliderValues.nervousSystemLoad.get();
-      const coherence = sliderValues.identityCoherence.get();
-      const agency = sliderValues.agencyScore.get();
-      const meaning = sliderValues.meaningScore.get();
-
-      telemetry.current.peaks.load = Math.max(telemetry.current.peaks.load, load);
-      telemetry.current.peaks.coherence = Math.max(telemetry.current.peaks.coherence, coherence);
-      telemetry.current.peaks.agency = Math.max(telemetry.current.peaks.agency, agency);
-      telemetry.current.peaks.meaning = Math.max(telemetry.current.peaks.meaning, meaning);
-
-      telemetry.current.troughs.load = Math.min(telemetry.current.troughs.load, load);
-      telemetry.current.troughs.coherence = Math.min(telemetry.current.troughs.coherence, coherence);
-      telemetry.current.troughs.agency = Math.min(telemetry.current.troughs.agency, agency);
-      telemetry.current.troughs.meaning = Math.min(telemetry.current.troughs.meaning, meaning);
-    }, 50);
-
-    return () => clearInterval(interval);
-  }, [isRunning, sliderValues]);
-
   // Procedural Autopsy summary generator
   const createAutopsyReport = useCallback((finalMode: 'day' | 'month' | 'year'): AutopsyReport => {
     const { initials, peaks, troughs } = telemetry.current;
@@ -231,14 +218,33 @@ export function useTimeCompression(sliderValues: SimulatorValues, disabled = fal
 
     // Generate descriptive 3-sentence narrative
     let s1: string;
+    const roundedValue = Math.round(fastestDegraded.value);
+    const hasSignificantChange = Math.abs(fastestDegraded.value) >= 2;
+
     if (fastestDegraded.id === 'load') {
-      s1 = `The subject experienced severe neural hyper-arousal, with nervous system load climbing rapidly by +${fastestDegraded.value.toFixed(0)}% and peaking at ${peaks.load.toFixed(0)}% under the weight of external stimulation.`;
+      if (hasSignificantChange) {
+        s1 = `The subject experienced severe neural hyper-arousal, with nervous system load climbing rapidly by +${roundedValue}% and peaking at ${Math.round(peaks.load)}% under the weight of external stimulation.`;
+      } else {
+        s1 = `The subject maintained autonomic regulation, with nervous system load remaining stable, peaking at ${Math.round(peaks.load)}% under the weight of external stimulation.`;
+      }
     } else if (fastestDegraded.id === 'coherence') {
-      s1 = `The system suffered critical boundary failure, with identity coherence collapsing by -${fastestDegraded.value.toFixed(0)}% to a trough of ${troughs.coherence.toFixed(0)}% as internal anchors dissolved.`;
+      if (hasSignificantChange) {
+        s1 = `The system suffered critical boundary failure, with identity coherence collapsing by -${roundedValue}% to a trough of ${Math.round(troughs.coherence)}% as internal anchors dissolved.`;
+      } else {
+        s1 = `The system preserved its structural integrity, with identity coherence remaining stable at a trough of ${Math.round(troughs.coherence)}% as internal anchors held.`;
+      }
     } else if (fastestDegraded.id === 'agency') {
-      s1 = `Learned helplessness set in rapidly, causing agency to drop by -${fastestDegraded.value.toFixed(0)}% and bottoming out at ${troughs.agency.toFixed(0)}% as control mechanisms broke down.`;
+      if (hasSignificantChange) {
+        s1 = `Learned helplessness set in rapidly, causing agency to drop by -${roundedValue}% and bottoming out at ${Math.round(troughs.agency)}% as control mechanisms broke down.`;
+      } else {
+        s1 = `Agency remained stable, bottoming out at ${Math.round(troughs.agency)}% as control mechanisms held.`;
+      }
     } else {
-      s1 = `Existential stability collapsed first, with meaning dropping by -${fastestDegraded.value.toFixed(0)}% and troughing at ${troughs.meaning.toFixed(0)}% under the inflation of screen exposure and low physical connection.`;
+      if (hasSignificantChange) {
+        s1 = `Existential stability collapsed first, with meaning dropping by -${roundedValue}% and troughing at ${Math.round(troughs.meaning)}% under the inflation of screen exposure and low physical connection.`;
+      } else {
+        s1 = `Existential stability remained stable at a trough of ${Math.round(troughs.meaning)}% under the inflation of screen exposure and low physical connection.`;
+      }
     }
 
     let s2: string;
@@ -253,10 +259,10 @@ export function useTimeCompression(sliderValues: SimulatorValues, disabled = fal
     }
 
     let s3: string;
-    const avgStress = (peaks.load + (100 - troughs.coherence) + (100 - troughs.agency) + (100 - troughs.meaning)) / 4;
-    if (avgStress > 70) {
+    const peakNervousLoad = peaks.load;
+    if (peakNervousLoad > 70) {
       s3 = "The timeline concludes with the subject in a state of profound mental static and cognitive exhaustion, showing minimal capacity for recovery without total environment reconfiguration.";
-    } else if (avgStress > 45) {
+    } else if (peakNervousLoad >= 30) {
       s3 = "The subject survives the exposure in a state of functional burnout—maintaining system boundaries but showing high latent strain and reduced cognitive energy.";
     } else {
       s3 = "The subject successfully integrated environmental changes, completing the timeline in a state of balanced synaptic harmony and structural stability.";
@@ -275,23 +281,35 @@ export function useTimeCompression(sliderValues: SimulatorValues, disabled = fal
     };
   }, []);
 
-  // Frame tick loop to increment simulated clock
+  // Decoupled simulation tick loop running at 100ms (10 ticks/second)
   useEffect(() => {
     if (!isRunning || !modeConfig) return;
 
-    let lastTime = performance.now();
-    let frameId: number;
+    // Simulated hours per tick = totalHours / totalTicks
+    // totalTicks = (realDurationMs * speedMultiplier) / 100
+    const simHoursPerTick = (modeConfig.totalHours * 100) / (modeConfig.realDurationMs * speedMultiplier);
 
-    const tick = (now: number) => {
-      const deltaMs = now - lastTime;
-      lastTime = now;
+    const interval = setInterval(() => {
+      // Track peaks and troughs at every tick
+      const load = sliderValues.nervousSystemLoad.get();
+      const coherence = sliderValues.identityCoherence.get();
+      const agency = sliderValues.agencyScore.get();
+      const meaning = sliderValues.meaningScore.get();
+
+      telemetry.current.peaks.load = Math.max(telemetry.current.peaks.load, load);
+      telemetry.current.peaks.coherence = Math.max(telemetry.current.peaks.coherence, coherence);
+      telemetry.current.peaks.agency = Math.max(telemetry.current.peaks.agency, agency);
+      telemetry.current.peaks.meaning = Math.max(telemetry.current.peaks.meaning, meaning);
+
+      telemetry.current.troughs.load = Math.min(telemetry.current.troughs.load, load);
+      telemetry.current.troughs.coherence = Math.min(telemetry.current.troughs.coherence, coherence);
+      telemetry.current.troughs.agency = Math.min(telemetry.current.troughs.agency, agency);
+      telemetry.current.troughs.meaning = Math.min(telemetry.current.troughs.meaning, meaning);
 
       setElapsedHours(prev => {
-        const simHoursPerMs = modeConfig.totalHours / modeConfig.realDurationMs;
-        const nextHours = prev + deltaMs * simHoursPerMs;
+        const nextHours = prev + simHoursPerTick;
 
         if (nextHours >= modeConfig.totalHours) {
-          // Simulation complete! Compile autopsy report
           setIsPaused(true);
           const report = createAutopsyReport(modeConfig.totalHours === 24 ? 'day' : (modeConfig.totalHours === 720 ? 'month' : 'year'));
           setAutopsy(report);
@@ -300,13 +318,10 @@ export function useTimeCompression(sliderValues: SimulatorValues, disabled = fal
 
         return nextHours;
       });
+    }, 100);
 
-      frameId = requestAnimationFrame(tick);
-    };
-
-    frameId = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frameId);
-  }, [isRunning, modeConfig, createAutopsyReport]);
+    return () => clearInterval(interval);
+  }, [isRunning, modeConfig, createAutopsyReport, sliderValues, speedMultiplier]);
 
   // Format elapsed simulated hours into Day/Month/Year calendar units
   const formattedTime: SimulatedTime = (() => {
