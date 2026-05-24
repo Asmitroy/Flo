@@ -117,6 +117,29 @@ export const EnvironmentalPrescription: React.FC<EnvironmentalPrescriptionProps>
 
   const totalDelta = deltas.reduce((sum, d) => sum + d.absDelta, 0);
 
+  const shouldShowDelta = (sliderName: string, delta: number): boolean => {
+    let mappedName = sliderName;
+    if (sliderName === 'physicalMovement') mappedName = 'movement';
+    else if (sliderName === 'economicStress') mappedName = 'economic';
+    else if (sliderName === 'socialPressure') mappedName = 'social';
+    else if (sliderName === 'syntheticInteraction') mappedName = 'synthetic';
+
+    const stressors = ['stimulation', 'sleepDebt', 'economic', 'social', 'synthetic'];
+    const protective = ['movement'];
+    
+    if (stressors.includes(mappedName) && delta > 0) return false;
+    // Don't recommend increasing stressors
+    if (protective.includes(mappedName) && delta < 0) return false;
+    // Don't recommend decreasing protective factors
+    if (Math.abs(delta) < 5) return false;
+    // Don't show negligible changes
+    
+    return true;
+  };
+
+  const visibleDeltas = deltas.filter(d => shouldShowDelta(d.key, d.delta));
+  const someFiltered = visibleDeltas.length < deltas.length;
+
   // 3. Maintenance Note
   let maintenanceNote = "This load level is survivable short-term. Sustainable performance requires scheduled recovery windows.";
   const isCabin = activeArchetype === "Recovery Cabin";
@@ -381,7 +404,7 @@ export const EnvironmentalPrescription: React.FC<EnvironmentalPrescriptionProps>
             <div>
               <SectionLabel>SECTION 2 — TARGET ENVIRONMENT</SectionLabel>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '4px' }}>
-                {deltas.map(({ key, currentVal, targetVal, delta }) => {
+                {visibleDeltas.map(({ key, currentVal, targetVal, delta }) => {
                   let directionArrow = ' ';
                   let arrowColor = '#666';
                   let deltaText = '';
@@ -435,6 +458,11 @@ export const EnvironmentalPrescription: React.FC<EnvironmentalPrescriptionProps>
                   );
                 })}
               </div>
+              {someFiltered && (
+                <div style={{ fontSize: '9px', color: '#71717a', fontStyle: 'italic', marginTop: '6px', textAlign: 'left' }}>
+                  Minor adjustments omitted. Focus on the changes above.
+                </div>
+              )}
             </div>
 
             {/* SECTION 3 - TRANSITION PROTOCOL */}

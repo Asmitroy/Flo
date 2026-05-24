@@ -641,12 +641,11 @@ const CognitiveWeather = React.memo(({
     const evaluate = () => {
       const att = attention.get();
       const nrv = nervousLoad.get();
-      const idn = identity.get();
       const agc = agency.get();
       const mng = meaning.get();
       const fp = flowProbability.get();
 
-      // Flow overrides clear/overcast/storm if probability is high
+      // FLOW: flowProbability > 0.6
       if (fp > 0.6) {
         return 'flow';
       }
@@ -655,32 +654,23 @@ const CognitiveWeather = React.memo(({
       if (mng < 20 && agc < 30) {
         return 'void';
       }
-      
-      const attWellness = att;
-      const nrvWellness = 100 - nrv;
-      const idnWellness = idn;
-      const agcWellness = agc;
-      const mngWellness = mng;
 
-      // STORM: any system < 40 OR nervousLoad > 70
-      if (attWellness < 40 || nrvWellness < 40 || idnWellness < 40 || agcWellness < 40 || mngWellness < 40 || nrv > 70) {
+      // STORM: nervousLoad > 70 OR attention < 40 OR agency < 30
+      if (nrv > 70 || att < 40 || agc < 30) {
         return 'storm';
       }
-      
-      // OVERCAST: any system 40-70 OR nervousLoad 30-70
-      if (
-        (attWellness >= 40 && attWellness <= 70) ||
-        (nrvWellness >= 30 && nrvWellness <= 70) ||
-        (idnWellness >= 40 && idnWellness <= 70) ||
-        (agcWellness >= 40 && agcWellness <= 70) ||
-        (mngWellness >= 40 && mngWellness <= 70) ||
-        (nrv >= 30 && nrv <= 70)
-      ) {
+
+      // OVERCAST: nervousLoad 30-70 OR (attention 40-70) OR (meaning 30-60)
+      if ((nrv >= 30 && nrv <= 70) || (att >= 40 && att <= 70) || (mng >= 30 && mng <= 60)) {
         return 'overcast';
       }
-      
-      // CLEAR: nervousLoad < 30 AND all systems > 70
-      return 'clear';
+
+      // CLEAR: nervousLoad < 30 AND attention > 70 AND meaning > 60
+      if (nrv < 30 && att > 70 && mng > 60) {
+        return 'clear';
+      }
+
+      return 'overcast';
     };
 
     const updateWeather = () => {
@@ -1686,7 +1676,7 @@ export default function CognitiveSimulator() {
       const econ = economicStress.get();
       const phys = physicalMovement.get();
 
-      const targetLoad = Math.min(100, stim * (1 + (sleep * 0.015)));
+      const targetLoad = Math.min(100, stim * (1 + (sleep / 100 * 0.8)));
       const targetCoherence = Math.max(0, 100 - synth);
 
       const currentLoad = nervousSystemLoad.get();
