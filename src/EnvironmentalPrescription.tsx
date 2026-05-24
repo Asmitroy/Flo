@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ARCHETYPES } from './ArchetypeEngine';
 
 export interface SystemScores {
   attention: number;
@@ -25,15 +26,28 @@ interface EnvironmentalPrescriptionProps {
   insight: string;
   isOpen: boolean;
   onClose: () => void;
-  onApplyTargets: (targets: {
-    stimulation?: number;
-    sleepDebt?: number;
-    socialPressure?: number;
-    economicStress?: number;
-    physicalMovement?: number;
-    syntheticInteraction?: number;
-  }) => void;
+  onApplyTargets: (
+    targets: {
+      stimulation?: number;
+      sleepDebt?: number;
+      socialPressure?: number;
+      economicStress?: number;
+      physicalMovement?: number;
+      syntheticInteraction?: number;
+    },
+    targetArchetypeId: string | null
+  ) => void;
+  currentNearestArchetype: string;
 }
+
+const RECOVERY_AND_FLOW_IDS = [
+  "recovery-cabin",
+  "meaningful-work",
+  "sustainable-high-performance",
+  "digital-detox",
+  "athletic-recovery",
+  "creative-solitude"
+];
 
 export const EnvironmentalPrescription: React.FC<EnvironmentalPrescriptionProps> = ({
   systemScores,
@@ -43,7 +57,22 @@ export const EnvironmentalPrescription: React.FC<EnvironmentalPrescriptionProps>
   isOpen,
   onClose,
   onApplyTargets,
+  currentNearestArchetype,
 }) => {
+  const [selectedTargetId, setSelectedTargetId] = useState<string>("athletic-recovery");
+
+  // Get target values for selected archetype
+  const targetArch = ARCHETYPES.find(a => a.id === selectedTargetId);
+  const targetTargets = targetArch ? targetArch.targets : {
+    sleepDebt: 10,
+    stimulation: 20,
+    socialPressure: 30,
+    economicStress: 25,
+    physicalMovement: 90,
+    syntheticInteraction: 15,
+  };
+
+  const targetProfiles = ARCHETYPES.filter(a => RECOVERY_AND_FLOW_IDS.includes(a.id));
 
   // 1. Identify primary failure
   const wellnessScores = {
@@ -64,163 +93,31 @@ export const EnvironmentalPrescription: React.FC<EnvironmentalPrescriptionProps>
   scoresList.sort((a, b) => a.val - b.val);
   const primaryFailure = scoresList[0].id;
 
-  // 2. Generate 3-4 slider targets
-  const targets: Record<string, number | string> = {};
-  
-  // Rule 1: Primary failure targets
-  if (primaryFailure === 'nervous' || primaryFailure === 'attention') {
-    targets.stimulation = Math.max(sliderValues.stimulation - 30, 10);
-    targets.sleepDebt = Math.max(sliderValues.sleepDebt - 40, 0);
-  } else if (primaryFailure === 'agency') {
-    targets.physicalMovement = Math.min(sliderValues.physicalMovement + 35, 80);
-    targets.economicStress = "address external — simulation cannot prescribe";
-  } else if (primaryFailure === 'meaning') {
-    targets.physicalMovement = Math.min(sliderValues.physicalMovement + 30, 75);
-    targets.stimulation = Math.max(sliderValues.stimulation - 25, 15);
-  } else if (primaryFailure === 'identity') {
-    targets.syntheticInteraction = Math.max(sliderValues.syntheticInteraction - 40, 10);
-    targets.socialPressure = Math.max(sliderValues.socialPressure - 35, 10);
-  }
-
-  // Add secondary targets to guarantee 3-4 suggestions if we don't have enough
-  const currentSliders = [
-    { key: 'stimulation', val: sliderValues.stimulation, safeMin: 10, safeMax: 50, targetVal: 30 },
-    { key: 'sleepDebt', val: sliderValues.sleepDebt, safeMin: 0, safeMax: 30, targetVal: 15 },
-    { key: 'physicalMovement', val: sliderValues.physicalMovement, safeMin: 40, safeMax: 100, targetVal: 65 },
-    { key: 'socialPressure', val: sliderValues.socialPressure, safeMin: 0, safeMax: 40, targetVal: 20 },
-    { key: 'syntheticInteraction', val: sliderValues.syntheticInteraction, safeMin: 0, safeMax: 35, targetVal: 15 },
+  // 2. Map dimensions order and compute deltas
+  const dimensionKeys = [
+    'physicalMovement',
+    'stimulation',
+    'sleepDebt',
+    'syntheticInteraction',
+    'economicStress',
+    'socialPressure'
   ];
 
-  for (const s of currentSliders) {
-    if (Object.keys(targets).length >= 4) break;
-    if (targets[s.key] !== undefined) continue;
-
-    // Check if slider is out of safe bounds
-    if (s.key === 'physicalMovement' ? s.val < s.safeMin : s.val > s.safeMax) {
-      if (s.key === 'physicalMovement') {
-        targets[s.key] = Math.min(s.val + 25, 75);
-      } else {
-        targets[s.key] = Math.max(s.val - 25, s.targetVal);
-      }
-    }
-  }
-
-  // Guarantee at least 3 elements
-  if (Object.keys(targets).length < 3) {
-    if (targets.stimulation === undefined) targets.stimulation = 30;
-    if (targets.sleepDebt === undefined) targets.sleepDebt = 15;
-    if (targets.physicalMovement === undefined) targets.physicalMovement = 65;
-  }
-
-  // Helper function to calculate flow metrics
-  const evaluateFlow = (
-    stim: number,
-    sleep: number,
-    social: number,
-    econ: number,
-    phys: number,
-    synth: number
-  ) => {
-    const load = Math.min(100, stim * (1 + (sleep * 0.015)));
-    const attention = 100 - load;
-    const agency = Math.max(0, Math.min(100, 30 + (phys * 0.30) - (econ * 0.30) - (sleep * 0.25) - (load * 0.15)));
-    const meaning = Math.max(0, Math.min(100, 15 + (phys * 0.40) - (stim * 0.25) + (100 - synth) * 0.15 - (econ * 0.15) - (sleep * 0.10)));
-
-    let satisfied = 0;
-    if (attention > 35) satisfied++;
-    if (agency > 40) satisfied++;
-    if (load >= 35 && load <= 65) satisfied++;
-    if (meaning > 45) satisfied++;
-    if (social < 40) satisfied++;
-
-    const inFlowChannel = (
-      attention > 35 &&
-      agency > 40 &&
-      load >= 35 && load <= 65 &&
-      meaning > 45 &&
-      social < 40
-    );
-
-    let prob = 0;
-    if (inFlowChannel) {
-      const attentionContrib = (attention - 35) / 65 * 0.3;
-      const agencyContrib = (agency - 40) / 60 * 0.3;
-      const loadContrib = 1 - Math.abs(load - 50) / 15 * 0.4;
-      prob = Math.min(1, Math.max(0, attentionContrib + agencyContrib + loadContrib));
-    }
-
-    return { prob, satisfied };
-  };
-
-  // Current flow assessment
-  const currentFlow = evaluateFlow(
-    sliderValues.stimulation,
-    sliderValues.sleepDebt,
-    sliderValues.socialPressure,
-    sliderValues.economicStress,
-    sliderValues.physicalMovement,
-    sliderValues.syntheticInteraction
-  );
-  const flowCompatibilityPercent = Math.round((currentFlow.satisfied / 5) * 100);
-
-  // 3. Flow optimization calculator
-  const optimizations: { label: string; deltaProb: number; deltaSatisfied: number; key: string; direction: 'up' | 'down'; targetVal: number }[] = [];
-
-  const slidersToTest = [
-    { key: 'stimulation', label: 'STIMULATION', current: sliderValues.stimulation, isNegative: true },
-    { key: 'sleepDebt', label: 'SLEEP DEBT', current: sliderValues.sleepDebt, isNegative: true },
-    { key: 'socialPressure', label: 'SOCIAL PRESSURE', current: sliderValues.socialPressure, isNegative: true },
-    { key: 'economicStress', label: 'ECONOMIC STRESS', current: sliderValues.economicStress, isNegative: true },
-    { key: 'physicalMovement', label: 'PHYSICAL MOVEMENT', current: sliderValues.physicalMovement, isNegative: false },
-    { key: 'syntheticInteraction', label: 'SYNTHETIC INTERACTION', current: sliderValues.syntheticInteraction, isNegative: true },
-  ];
-
-  slidersToTest.forEach(s => {
-    // If we move it in the beneficial direction by 20 points
-    const step = s.isNegative ? -20 : 20;
-    const testVal = Math.max(0, Math.min(100, s.current + step));
-
-    // Skip if there's no actual change (already at boundary)
-    if (testVal === s.current) return;
-
-    // Simulate flow with new value
-    const simulated = evaluateFlow(
-      s.key === 'stimulation' ? testVal : sliderValues.stimulation,
-      s.key === 'sleepDebt' ? testVal : sliderValues.sleepDebt,
-      s.key === 'socialPressure' ? testVal : sliderValues.socialPressure,
-      s.key === 'economicStress' ? testVal : sliderValues.economicStress,
-      s.key === 'physicalMovement' ? testVal : sliderValues.physicalMovement,
-      s.key === 'syntheticInteraction' ? testVal : sliderValues.syntheticInteraction
-    );
-
-    const deltaProb = simulated.prob - currentFlow.prob;
-    const deltaSatisfied = simulated.satisfied - currentFlow.satisfied;
-
-    const actionText = s.isNegative 
-      ? `Decrease ${s.label} by 20 points` 
-      : `Increase ${s.label} by 20 points`;
-
-    optimizations.push({
-      label: actionText,
-      deltaProb,
-      deltaSatisfied,
-      key: s.key,
-      direction: s.isNegative ? 'down' : 'up',
-      targetVal: testVal
-    });
+  const deltas = dimensionKeys.map(key => {
+    const currentVal = sliderValues[key as keyof SliderSnapshot];
+    const targetVal = targetTargets[key as keyof typeof targetTargets];
+    return {
+      key,
+      currentVal,
+      targetVal,
+      delta: targetVal - currentVal,
+      absDelta: Math.abs(targetVal - currentVal)
+    };
   });
 
-  // Sort primarily by deltaProb (flow state entry probability gain), secondarily by deltaSatisfied (conditions met)
-  optimizations.sort((a, b) => {
-    if (Math.abs(a.deltaProb - b.deltaProb) > 0.01) {
-      return b.deltaProb - a.deltaProb;
-    }
-    return b.deltaSatisfied - a.deltaSatisfied;
-  });
+  const totalDelta = deltas.reduce((sum, d) => sum + d.absDelta, 0);
 
-  const topOptimizations = optimizations.slice(0, 2);
-
-  // 4. Maintenance Note
+  // 3. Maintenance Note
   let maintenanceNote = "This load level is survivable short-term. Sustainable performance requires scheduled recovery windows.";
   const isCabin = activeArchetype === "Recovery Cabin";
   const allWellnessAbove50 = 
@@ -230,7 +127,7 @@ export const EnvironmentalPrescription: React.FC<EnvironmentalPrescriptionProps>
     wellnessScores.agency >= 50 &&
     wellnessScores.meaning >= 50;
 
-  const isHighLoad = activeArchetype && ["Modern Student", "Corporate Burnout", "Hyperonline", "Cyberpunk Megacity"].includes(activeArchetype);
+  const isHighLoad = activeArchetype && ["Modern Student", "Corporate Burnout", "Hyperonline", "Cyberpunk Megacity", "Deep Flow", "Chronic Caregiver"].includes(activeArchetype);
 
   if (primaryFailure === 'meaning') {
     maintenanceNote = "No environment prescription addresses meaning directly. Meaning is generated through engagement, not rest.";
@@ -243,12 +140,12 @@ export const EnvironmentalPrescription: React.FC<EnvironmentalPrescriptionProps>
   // Handle Targets Application
   const handleApply = () => {
     const finalTargets: Record<string, number> = {};
-    Object.entries(targets).forEach(([k, v]) => {
+    Object.entries(targetTargets).forEach(([k, v]) => {
       if (typeof v === 'number') {
         finalTargets[k] = v;
       }
     });
-    onApplyTargets(finalTargets);
+    onApplyTargets(finalTargets, selectedTargetId);
     onClose();
   };
 
@@ -262,6 +159,97 @@ export const EnvironmentalPrescription: React.FC<EnvironmentalPrescriptionProps>
       syntheticInteraction: "SYNTHETIC INTERACTION",
     };
     return names[key] || key.toUpperCase();
+  };
+
+  // Render dynamic phases checklist
+  const renderTransitionProtocol = () => {
+    if (totalDelta < 100) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div style={{ fontSize: '9px', color: '#4ade80', fontWeight: 'bold', marginBottom: '2px' }}>
+            SINGLE-PHASE TRANSITION. ACHIEVABLE IN 1-2 DAYS.
+          </div>
+          <div style={{ fontSize: '9px', color: '#a1a1aa', fontWeight: 'bold' }}>
+            PHASE 1 (DAYS 1-2):
+          </div>
+          <div style={{ fontSize: '9px', color: '#71717a', paddingLeft: '8px' }}>
+            &gt; Align all environment parameters directly.
+          </div>
+          <div style={{ fontSize: '9px', color: '#71717a', paddingLeft: '8px' }}>
+            &gt; Target values: STIM: {targetTargets.stimulation}%, SLEEP: {targetTargets.sleepDebt}%, PHYS: {targetTargets.physicalMovement}%.
+          </div>
+        </div>
+      );
+    } else if (totalDelta >= 100 && totalDelta <= 250) {
+      const sortedDeltas = [...deltas].sort((a, b) => b.absDelta - a.absDelta);
+      const high1 = sortedDeltas[0];
+      const high2 = sortedDeltas[1];
+      const halfway1 = Math.round(high1.currentVal + high1.delta / 2);
+      const halfway2 = Math.round(high2.currentVal + high2.delta / 2);
+
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div style={{ fontSize: '9px', color: '#fbbf24', fontWeight: 'bold', marginBottom: '2px' }}>
+            TWO-PHASE TRANSITION RECOMMENDED.
+          </div>
+          
+          <div style={{ fontSize: '9px', color: '#a1a1aa', fontWeight: 'bold' }}>
+            PHASE 1 (DAYS 1-3): ADDRESS THE 2 HIGHEST-DELTA SLIDERS HALFWAY
+          </div>
+          <div style={{ fontSize: '9px', color: '#71717a', paddingLeft: '8px' }}>
+            &gt; Adjust {getSliderDisplayName(high1.key)}: target {halfway1}% (currently {Math.round(high1.currentVal)}%)
+          </div>
+          <div style={{ fontSize: '9px', color: '#71717a', paddingLeft: '8px' }}>
+            &gt; Adjust {getSliderDisplayName(high2.key)}: target {halfway2}% (currently {Math.round(high2.currentVal)}%)
+          </div>
+
+          <div style={{ fontSize: '9px', color: '#a1a1aa', marginTop: '4px', fontWeight: 'bold' }}>
+            PHASE 2 (DAYS 4-7): COMPLETE REMAINING ADJUSTMENTS
+          </div>
+          <div style={{ fontSize: '9px', color: '#71717a', paddingLeft: '8px' }}>
+            &gt; Adjust {getSliderDisplayName(high1.key)} to {high1.targetVal}% and {getSliderDisplayName(high2.key)} to {high2.targetVal}%
+          </div>
+          <div style={{ fontSize: '9px', color: '#71717a', paddingLeft: '8px' }}>
+            &gt; Bring remaining parameters to target archetype values
+          </div>
+        </div>
+      );
+    } else {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <div style={{ fontSize: '9px', color: '#f87171', fontWeight: 'bold', marginBottom: '2px' }}>
+            GRADUATED THREE-PHASE TRANSITION REQUIRED.
+          </div>
+
+          <div style={{ fontSize: '9px', color: '#a1a1aa', fontWeight: 'bold' }}>
+            PHASE 1 (WEEK 1): SLEEP DEBT AND PHYSICAL MOVEMENT ONLY
+          </div>
+          <div style={{ fontSize: '9px', color: '#71717a', paddingLeft: '8px' }}>
+            &gt; Prioritize sleep: target sleep debt below {targetTargets.sleepDebt}% (current: {Math.round(sliderValues.sleepDebt)}%)
+          </div>
+          <div style={{ fontSize: '9px', color: '#71717a', paddingLeft: '8px' }}>
+            &gt; Begin movement: target physical movement above {targetTargets.physicalMovement}% (current: {Math.round(sliderValues.physicalMovement)}%)
+          </div>
+
+          <div style={{ fontSize: '9px', color: '#a1a1aa', marginTop: '4px', fontWeight: 'bold' }}>
+            PHASE 2 (WEEK 2): STIMULATION AND SOCIAL PRESSURE REDUCTION
+          </div>
+          <div style={{ fontSize: '9px', color: '#71717a', paddingLeft: '8px' }}>
+            &gt; Reduce stimulation: target below {targetTargets.stimulation}% (current: {Math.round(sliderValues.stimulation)}%)
+          </div>
+          <div style={{ fontSize: '9px', color: '#71717a', paddingLeft: '8px' }}>
+            &gt; Reduce social comparison exposure: target below {targetTargets.socialPressure}% (current: {Math.round(sliderValues.socialPressure)}%)
+          </div>
+
+          <div style={{ fontSize: '9px', color: '#a1a1aa', marginTop: '4px', fontWeight: 'bold' }}>
+            PHASE 3 (WEEK 3): FINE-TUNE REMAINING VARIABLES
+          </div>
+          <div style={{ fontSize: '9px', color: '#71717a', paddingLeft: '8px' }}>
+            &gt; Adjust synthetic interaction to {targetTargets.syntheticInteraction}% and economic stress to {targetTargets.economicStress}%
+          </div>
+        </div>
+      );
+    }
   };
 
   return (
@@ -303,6 +291,8 @@ export const EnvironmentalPrescription: React.FC<EnvironmentalPrescriptionProps>
               display: 'flex',
               flexDirection: 'column',
               gap: '16px',
+              maxHeight: '90vh',
+              overflowY: 'auto'
             }}
           >
             {/* Header */}
@@ -330,24 +320,84 @@ export const EnvironmentalPrescription: React.FC<EnvironmentalPrescriptionProps>
               </div>
             </div>
 
+            {/* SECTION 0 — TRANSITION TARGET */}
+            <div>
+              <SectionLabel>SECTION 0 — TRANSITION TARGET</SectionLabel>
+              <div style={{ fontSize: '10px', color: '#888', marginBottom: '8px' }}>
+                You are currently operating closest to: <span style={{ color: '#fff', fontWeight: 'bold' }}>{currentNearestArchetype || "Manual"}</span>
+              </div>
+              <div style={{ fontSize: '9px', color: '#666', marginBottom: '6px', letterSpacing: '0.05em' }}>
+                SELECT A TARGET PROFILE:
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '4px' }}>
+                {targetProfiles.map((arch) => {
+                  const isSelected = selectedTargetId === arch.id;
+                  const isMaxFlow = arch.id === "athletic-recovery";
+                  return (
+                    <button
+                      key={arch.id}
+                      onClick={() => setSelectedTargetId(arch.id)}
+                      style={{
+                        padding: '6px 4px',
+                        background: isSelected ? 'rgba(245, 200, 66, 0.08)' : '#070707',
+                        border: isSelected ? '1px solid #F5C842' : '1px solid #1a1a1a',
+                        color: isSelected ? '#F5C842' : '#888',
+                        fontFamily: 'monospace',
+                        fontSize: '9px',
+                        textAlign: 'center',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                        gap: '2px',
+                      }}
+                      title={arch.summary}
+                    >
+                      <span style={{ fontWeight: isSelected ? 'bold' : 'normal', textTransform: 'uppercase', fontSize: '8px' }}>
+                        {arch.name}
+                      </span>
+                      {isMaxFlow && (
+                        <span style={{ 
+                          fontSize: '7px', 
+                          color: isSelected ? '#fff' : '#c2992b',
+                          background: isSelected ? '#c2992b' : 'rgba(245,200,66,0.05)',
+                          padding: '0px 3px', 
+                          borderRadius: '1px', 
+                          fontWeight: 'bold',
+                          marginTop: '2px'
+                        }}>
+                          MAX FLOW
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* SECTION 2 - TARGET ENVIRONMENT */}
             <div>
               <SectionLabel>SECTION 2 — TARGET ENVIRONMENT</SectionLabel>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
-                {Object.entries(targets).map(([key, targetVal]) => {
-                  const currentVal = sliderValues[key as keyof SliderSnapshot];
-                  const isString = typeof targetVal === 'string';
-                  
-                  let directionArrow = '→';
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '4px' }}>
+                {deltas.map(({ key, currentVal, targetVal, delta }) => {
+                  let directionArrow = ' ';
                   let arrowColor = '#666';
-                  if (!isString) {
-                    if (targetVal > currentVal) {
-                      directionArrow = '▲';
-                      arrowColor = '#4ade80';
-                    } else if (targetVal < currentVal) {
-                      directionArrow = '▼';
-                      arrowColor = '#f43f5e';
-                    }
+                  let deltaText = '';
+                  
+                  if (delta > 0) {
+                    directionArrow = '▲';
+                    arrowColor = '#4ade80';
+                    deltaText = `+${Math.round(delta)}`;
+                  } else if (delta < 0) {
+                    directionArrow = '▼';
+                    arrowColor = '#f43f5e';
+                    deltaText = `${Math.round(delta)}`;
+                  } else {
+                    directionArrow = '=';
+                    arrowColor = '#666';
+                    deltaText = '0';
                   }
 
                   return (
@@ -357,21 +407,28 @@ export const EnvironmentalPrescription: React.FC<EnvironmentalPrescriptionProps>
                         display: 'flex',
                         justifyContent: 'space-between',
                         alignItems: 'center',
-                        fontSize: '10px',
+                        fontSize: '9px',
                         background: '#090909',
-                        padding: '6px 10px',
+                        padding: '5px 8px',
                         border: '1px solid #141414',
                       }}
                     >
                       <span style={{ color: '#aaa', fontWeight: 'bold' }}>{getSliderDisplayName(key)}</span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ color: '#555' }}>{currentVal}%</span>
+                        <span style={{ color: '#555', width: '28px', textAlign: 'right' }}>{Math.round(currentVal)}%</span>
                         <span style={{ color: '#888' }}>→</span>
-                        <span style={{ color: isString ? '#8b5cf6' : '#fff', fontWeight: 'bold' }}>
-                          {isString ? 'EXTERNAL' : `${Math.round(targetVal as number)}%`}
+                        <span style={{ color: '#fff', fontWeight: 'bold', width: '28px', textAlign: 'left' }}>
+                          {Math.round(targetVal)}%
                         </span>
-                        <span style={{ color: arrowColor, fontSize: '9px', width: '10px', textAlign: 'center' }}>
-                          {directionArrow}
+                        <span style={{ 
+                          color: arrowColor, 
+                          fontSize: '8px', 
+                          fontWeight: 'bold', 
+                          width: '45px', 
+                          textAlign: 'right',
+                          fontFamily: 'monospace'
+                        }}>
+                          {directionArrow} {deltaText}
                         </span>
                       </div>
                     </div>
@@ -380,29 +437,11 @@ export const EnvironmentalPrescription: React.FC<EnvironmentalPrescriptionProps>
               </div>
             </div>
 
-            {/* SECTION 3 - FLOW STATE WINDOW */}
+            {/* SECTION 3 - TRANSITION PROTOCOL */}
             <div>
-              <SectionLabel>SECTION 3 — FLOW STATE WINDOW</SectionLabel>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <div style={{ fontSize: '10px', color: '#bbb' }}>
-                  Your environment is <span style={{ color: '#F5C842', fontWeight: 'bold' }}>{flowCompatibilityPercent}%</span> compatible with flow state entry.
-                </div>
-                
-                {topOptimizations.length > 0 && (
-                  <div style={{ background: 'rgba(245, 200, 66, 0.03)', border: '1px solid rgba(245, 200, 66, 0.1)', padding: '8px 10px', marginTop: '2px' }}>
-                    <div style={{ fontSize: '8px', color: '#c2992b', letterSpacing: '0.05em', marginBottom: '4px', fontWeight: 'bold' }}>
-                      RECOMMENDED CORE SLIDER ADAPTATIONS FOR FLOW STATE:
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      {topOptimizations.map((opt, i) => (
-                        <div key={i} style={{ fontSize: '9px', display: 'flex', alignItems: 'center', gap: '4px', color: '#d4d4d8' }}>
-                          <span style={{ color: '#F5C842' }}>&gt;</span>
-                          <span>{opt.label}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+              <SectionLabel>SECTION 3 — TRANSITION PROTOCOL</SectionLabel>
+              <div style={{ background: '#070707', border: '1px solid #141414', padding: '10px', marginTop: '2px' }}>
+                {renderTransitionProtocol()}
               </div>
             </div>
 

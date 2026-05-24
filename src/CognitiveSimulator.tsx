@@ -20,6 +20,7 @@ import IdentityCore from './IdentityCore';
 import AgencyMeter from './AgencyMeter';
 import ExistentialDepth from './ExistentialDepth';
 import { ArchetypeSelector } from './ArchetypeSelector';
+import { ARCHETYPES } from './ArchetypeEngine';
 import { useNarrativeEvents, DESTABILIZERS } from './NarrativeEventEngine';
 import { useTimeCompression } from './TimeCompressionEngine';
 import ReflectionModal, { type SystemScores, type SliderSnapshot } from './ReflectionModal';
@@ -396,6 +397,7 @@ interface HudTelemetryProps {
   isRebooting: boolean;
   isCompressionActive?: boolean;
   elapsedTime?: { hours: number, days: number, months: number, years: number };
+  targetSystemScores?: SystemScores | null;
 }
 
 const HudTelemetry = React.memo(({ 
@@ -407,7 +409,8 @@ const HudTelemetry = React.memo(({
   systemStartScores,
   isRebooting,
   isCompressionActive = false,
-  elapsedTime
+  elapsedTime,
+  targetSystemScores
 }: HudTelemetryProps) => {
   const [nrvScore, setNrvScore] = useState(nervousSystemLoad.get());
   const [idnScore, setIdnScore] = useState(identityCoherence.get());
@@ -515,6 +518,15 @@ const HudTelemetry = React.memo(({
             const isCrit = sys.score < 30;
             const isDeg = sys.score >= 30 && sys.score <= 70;
 
+            let displayTargetScore: number | null = null;
+            if (targetSystemScores) {
+              if (sys.id === 'nervous') {
+                displayTargetScore = 100 - targetSystemScores.nervous;
+              } else {
+                displayTargetScore = targetSystemScores[sys.id as keyof SystemScores] ?? null;
+              }
+            }
+
             return (
               <div key={sys.id}>
                 <div className="flex justify-between text-[10px] font-mono text-zinc-500 mb-1">
@@ -526,13 +538,28 @@ const HudTelemetry = React.memo(({
                     {!isRebooting && renderDelta(sys.score, sys.start, sys.id)}
                   </div>
                 </div>
-                <div className="w-full bg-zinc-900/60 h-1.5 rounded overflow-hidden">
+                <div className="relative w-full bg-zinc-900/60 h-1.5 rounded overflow-hidden">
                   <motion.div 
                     className="h-full rounded"
                     animate={{ width: `${Math.max(2, sys.score)}%` }}
                     transition={{ duration: 0.3 }}
                     style={{ backgroundColor: isCrit ? '#e11d48' : (isDeg ? '#d97706' : '#e4e4e7') }}
                   />
+                  {displayTargetScore !== null && (
+                    <div 
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        bottom: 0,
+                        left: `${displayTargetScore}%`,
+                        width: '2px',
+                        borderLeft: '2px dotted rgba(245, 200, 66, 0.75)',
+                        transform: 'translateX(-50%)',
+                        zIndex: 1,
+                      }}
+                      title={`Target: ${Math.round(displayTargetScore)}%`}
+                    />
+                  )}
                 </div>
               </div>
             );
@@ -687,7 +714,7 @@ const CognitiveWeather = React.memo(({
   const config = {
     clear: {
       color: '#6B8FE8',
-      opacity: [0.35, 0.48, 0.60],
+      opacity: [[0.35, 0.35], [0.48, 0.48], [0.60, 0.60]],
       radii: [35, 60, 85],
       duration: 3,
       ease: "easeInOut",
@@ -696,7 +723,7 @@ const CognitiveWeather = React.memo(({
     },
     overcast: {
       color: '#EF9F27',
-      opacity: [0.55, 0.68, 0.80],
+      opacity: [[0.55, 0.55], [0.68, 0.68], [0.80, 0.80]],
       radii: [22, 40, 58], // compressed radii
       duration: 1.5, // double pulse frequency
       ease: "easeInOut",
@@ -705,7 +732,7 @@ const CognitiveWeather = React.memo(({
     },
     storm: {
       color: '#E24B4A',
-      opacity: [0.75, 0.85, 0.90],
+      opacity: [[0.75, 0.75], [0.85, 0.85], [0.90, 0.90]],
       radii: [30, 55, 80],
       duration: 0.3, // oscillates rapidly
       ease: "linear",
@@ -714,7 +741,7 @@ const CognitiveWeather = React.memo(({
     },
     void: {
       color: 'rgba(255,255,255,0)',
-      opacity: [0, 0, 0],
+      opacity: [[0, 0], [0, 0], [0, 0]],
       radii: [35, 60, 85],
       duration: 2,
       ease: "easeInOut",
@@ -821,14 +848,19 @@ const CognitiveWeather = React.memo(({
                     r: config.radii[ringIdx],
                     opacity: config.opacity[ringIdx] as any,
                     scale: config.scale,
-                    rotate: weather === 'flow' ? [0, 360] : 0,
-                    x: config.jitter ? [0, -2, 2, -1, 1, -2, 2, 0] : 0,
-                    y: config.jitter ? [0, 2, -2, 1, -2, 1, -2, 0] : 0,
+                    rotate: weather === 'flow' ? [0, 360] : [0, 0],
+                    x: config.jitter ? [0, -2, 2, -1, 1, -2, 2, 0] : [0, 0],
+                    y: config.jitter ? [0, 2, -2, 1, -2, 1, -2, 0] : [0, 0],
                   }}
                   transition={{
                     stroke: { duration: 0.5 },
                     r: { duration: 0.5, ease: "easeOut" },
-                    opacity: { duration: 0.5 },
+                    opacity: weather === 'flow' ? {
+                      duration: config.duration,
+                      repeat: Infinity,
+                      ease: config.ease as any,
+                      delay: ringIdx * 1.2
+                    } : { duration: 0.5 },
                     scale: {
                       duration: config.duration,
                       repeat: Infinity,
@@ -895,70 +927,28 @@ const CognitiveWeather = React.memo(({
 CognitiveWeather.displayName = 'CognitiveWeather';
 
 interface DiagnosticReadoutProps {
-  stimulationLevel: MotionValue<number>;
-  sleepDebt: MotionValue<number>;
   nervousSystemLoad: MotionValue<number>;
-  syntheticInteraction: MotionValue<number>;
-  identityCoherence: MotionValue<number>;
-  economicStress: MotionValue<number>;
-  physicalMovement: MotionValue<number>;
-  socialPressure: MotionValue<number>;
-  agencyScore: MotionValue<number>;
-  meaningScore: MotionValue<number>;
 }
 
 const DiagnosticReadout = React.memo(({ 
-  stimulationLevel, 
-  sleepDebt, 
-  nervousSystemLoad, 
-  syntheticInteraction, 
-  identityCoherence,
-  economicStress,
-  physicalMovement,
-  socialPressure,
-  agencyScore,
-  meaningScore
+  nervousSystemLoad
 }: DiagnosticReadoutProps) => {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const updateText = () => {
       if (!ref.current) return;
-      ref.current.textContent = `STIM: ${stimulationLevel.get()} | SLEEP: ${sleepDebt.get()}% | LOAD: ${nervousSystemLoad.get().toFixed(1)} | SYNTH: ${syntheticInteraction.get()}% | COH: ${identityCoherence.get().toFixed(1)}% | ECON: ${economicStress.get()}% | PHYS: ${physicalMovement.get()}% | SOC: ${socialPressure.get()}% | AGENCY: ${agencyScore.get().toFixed(1)}% | MEANING: ${meaningScore.get().toFixed(1)}%`;
+      ref.current.textContent = `TRUE LOAD: ${nervousSystemLoad.get().toFixed(1)}%`;
     };
 
-    const unsubs = [
-      stimulationLevel.on("change", updateText),
-      sleepDebt.on("change", updateText),
-      nervousSystemLoad.on("change", updateText),
-      syntheticInteraction.on("change", updateText),
-      identityCoherence.on("change", updateText),
-      economicStress.on("change", updateText),
-      physicalMovement.on("change", updateText),
-      socialPressure.on("change", updateText),
-      agencyScore.on("change", updateText),
-      meaningScore.on("change", updateText)
-    ];
+    const unsub = nervousSystemLoad.on("change", updateText);
 
     updateText();
-    return () => {
-      unsubs.forEach(unsub => unsub());
-    };
-  }, [
-    stimulationLevel, 
-    sleepDebt, 
-    nervousSystemLoad, 
-    syntheticInteraction, 
-    identityCoherence,
-    economicStress,
-    physicalMovement,
-    socialPressure,
-    agencyScore,
-    meaningScore
-  ]);
+    return unsub;
+  }, [nervousSystemLoad]);
 
   return (
-    <div ref={ref} className="text-[8px] font-mono text-zinc-600/40 text-center tracking-wider pt-2" />
+    <div ref={ref} className="text-[8px] font-mono text-zinc-650/50 text-center tracking-widest pt-2 uppercase font-bold" />
   );
 });
 
@@ -1002,6 +992,28 @@ const CriticalAlert = React.memo(({ nervousSystemLoad }: CriticalAlertProps) => 
 
 CriticalAlert.displayName = 'CriticalAlert';
 
+const DepletionAlert = React.memo(({ show }: { show: boolean }) => {
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 10 }}
+          className="bg-rose-950/20 border border-rose-500/30 rounded p-2.5 flex items-center space-x-2.5"
+        >
+          <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0 animate-pulse" />
+          <div className="font-mono text-[9px] text-rose-400/90 leading-tight">
+            <span className="font-bold uppercase block text-rose-300">COGNITIVE RESERVES DEPLETING</span>
+            Deep Flow sustainability window has collapsed. Forcing biological tax until sleep debt is recovered.
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+});
+DepletionAlert.displayName = 'DepletionAlert';
+
 interface RealtimeLogsProps {
   logs: typeof INITIAL_LOGS;
   nervousSystemLoad: MotionValue<number>;
@@ -1011,72 +1023,83 @@ interface RealtimeLogsProps {
 
 const RealtimeLogs = React.memo(({ logs, nervousSystemLoad, meaningScore, isRebooting }: RealtimeLogsProps) => {
   const [currentLoad, setCurrentLoad] = useState(nervousSystemLoad.get());
+  const [currentMeaning, setCurrentMeaning] = useState(meaningScore.get());
+  const [viewMode, setViewMode] = useState<'console' | 'attention'>('console');
 
   useEffect(() => {
     const unsub = nervousSystemLoad.on("change", (v) => setCurrentLoad(v));
     return () => unsub();
   }, [nervousSystemLoad]);
 
+  useEffect(() => {
+    const unsub = meaningScore.on("change", (v) => setCurrentMeaning(v));
+    return () => unsub();
+  }, [meaningScore]);
+
   return (
     <section className="lg:col-span-1 bg-zinc-950/40 border border-zinc-900/60 rounded-lg p-4 backdrop-blur-lg flex flex-col justify-between select-none h-full min-h-[640px]">
       <div className="flex flex-col h-full space-y-4 overflow-hidden">
         {/* Top: Existential Depth */}
         <div className="border-b border-zinc-900/60 pb-3 flex flex-col items-center">
-          <ExistentialDepth meaningScore={meaningScore} />
+          <ExistentialDepth meaningScore={currentMeaning} />
         </div>
 
-        {/* Middle: Compact Attention Graph */}
-        <div className="border-b border-zinc-900/60 pb-3 flex flex-col items-center">
-          <div className="text-[9px] font-mono text-zinc-500 uppercase tracking-widest mb-1">
-            Attention Map
-          </div>
-          <div className="w-full max-h-[140px] flex items-center justify-center overflow-hidden">
-            <AttentionGraph load={nervousSystemLoad} />
-          </div>
-        </div>
-
-        {/* Bottom: Console Monitor */}
+        {/* Bottom: Console Monitor or Attention Map */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex items-center space-x-2 mb-2 border-b border-zinc-900 pb-2">
-            <Terminal className="w-3.5 h-3.5 text-zinc-500" />
-            <h3 className="font-display text-[10px] uppercase tracking-wider text-zinc-400 font-bold">
-              Console Monitor
-            </h3>
+          <div className="flex items-center justify-between mb-2 border-b border-zinc-900 pb-2">
+            <div className="flex items-center space-x-2">
+              <Terminal className="w-3.5 h-3.5 text-zinc-500" />
+              <h3 className="font-display text-[10px] uppercase tracking-wider text-zinc-400 font-bold">
+                {viewMode === 'console' ? 'Console Monitor' : 'Attention Map'}
+              </h3>
+            </div>
+            <button
+              onClick={() => setViewMode(prev => prev === 'console' ? 'attention' : 'console')}
+              className="px-2 py-0.5 border border-zinc-800 hover:border-zinc-500 text-[8px] font-mono text-zinc-400 hover:text-zinc-200 transition-colors uppercase cursor-pointer"
+            >
+              {viewMode === 'console' ? '[ ATTENTION MAP ]' : '[ CONSOLE ]'}
+            </button>
           </div>
 
-          <div className="flex-1 font-mono text-[11px] space-y-2 overflow-hidden overflow-x-hidden">
-            <AnimatePresence initial={false}>
-              {logs.map((log) => {
-                let textCol = "text-zinc-500";
-                if (log.type === "success") textCol = "text-emerald-500/80";
-                else if (log.type === "warn") textCol = "text-amber-500/80";
-                else if (log.type === "crit") textCol = "text-rose-500/95 font-bold animate-pulse";
-                else if (log.type === "system") textCol = "text-indigo-400/80";
+          {viewMode === 'console' ? (
+            <div className="flex-1 font-mono text-[11px] space-y-2 overflow-hidden overflow-x-hidden">
+              <AnimatePresence initial={false}>
+                {logs.map((log) => {
+                  let textCol = "text-zinc-500";
+                  if (log.type === "success") textCol = "text-emerald-500/80";
+                  else if (log.type === "warn") textCol = "text-amber-500/80";
+                  else if (log.type === "crit") textCol = "text-rose-500/95 font-bold animate-pulse";
+                  else if (log.type === "system") textCol = "text-indigo-400/80";
 
-                let logText = log.text;
-                if (currentLoad > 50 && log.type !== "crit" && !isRebooting) {
-                  logText = log.text.split("").map((c) => {
-                    if (Math.random() < (currentLoad - 50) / 100 * 0.4) {
-                      return GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
-                    }
-                    return c;
-                  }).join("");
-                }
+                  let logText = log.text;
+                  if (currentLoad > 50 && log.type !== "crit" && !isRebooting) {
+                    logText = log.text.split("").map((c) => {
+                      if (Math.random() < (currentLoad - 50) / 100 * 0.4) {
+                        return GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
+                      }
+                      return c;
+                    }).join("");
+                  }
 
-                return (
-                  <motion.div
-                    key={log.id}
-                    initial={{ opacity: 0, x: 10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0 }}
-                    className={`${textCol} console-monitor-entry leading-normal`}
-                  >
-                    &gt; {logText}
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
-          </div>
+                  return (
+                    <motion.div
+                      key={log.id}
+                      initial={{ opacity: 0, x: 10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0 }}
+                      className={`${textCol} console-monitor-entry leading-normal`}
+                    >
+                      &gt; {logText}
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center p-2 overflow-hidden">
+              <AttentionGraph load={nervousSystemLoad} />
+            </div>
+          )}
         </div>
       </div>
 
@@ -1104,6 +1127,9 @@ interface HeaderStatusProps {
   onRunAnalysis: () => void;
   onRecalibrate: () => void;
   profileLoaded: boolean;
+  sustainabilityLabel?: string | null;
+  currentNearestArchetype: string;
+  transitionProtocolActive: boolean;
 }
 
 const HeaderStatus = React.memo(({
@@ -1117,6 +1143,9 @@ const HeaderStatus = React.memo(({
   onRunAnalysis,
   onRecalibrate,
   profileLoaded,
+  sustainabilityLabel,
+  currentNearestArchetype,
+  transitionProtocolActive,
 }: HeaderStatusProps) => {
   const durationLabel = React.useMemo(() => {
     const m = Math.floor(sessionDuration / 60);
@@ -1177,7 +1206,31 @@ const HeaderStatus = React.memo(({
 
       <div className="flex items-center space-x-6">
         <div className="hidden md:flex flex-col text-right font-mono text-[10px]">
-          <span className="text-zinc-600 uppercase">SYS STATUS</span>
+          <span className="text-zinc-650 uppercase font-bold">CURRENT</span>
+          <span className="font-bold text-zinc-300 uppercase">
+            {currentNearestArchetype || "Manual"}
+          </span>
+        </div>
+
+        {transitionProtocolActive && (
+          <div className="hidden md:flex flex-col text-right font-mono text-[10px] border-l border-zinc-900/60 pl-6">
+            <span className="text-amber-500 font-bold uppercase tracking-widest animate-pulse">
+              TRANSITION PROTOCOL ACTIVE
+            </span>
+          </div>
+        )}
+
+        {sustainabilityLabel && (
+          <div className="hidden md:flex flex-col text-right font-mono text-[10px] border-r border-zinc-900/60 pr-6 mr-1">
+            <span className="text-zinc-650 uppercase">FLOW WINDOW</span>
+            <span className="font-bold text-amber-500 animate-pulse uppercase">
+              {sustainabilityLabel.replace("FLOW WINDOW: ", "")}
+            </span>
+          </div>
+        )}
+
+        <div className="hidden md:flex flex-col text-right font-mono text-[10px]">
+          <span className="text-zinc-600 uppercase font-bold">SYS STATUS</span>
           <span ref={statusTextRef} className="font-bold text-emerald-500">
             {isRebooting ? 'REBOOTING...' : 'INTEGRITY SAFE'}
           </span>
@@ -1186,7 +1239,7 @@ const HeaderStatus = React.memo(({
         <div className="flex items-center space-x-2">
           {/* Session Duration Ticker */}
           <div className="hidden md:flex flex-col text-right font-mono text-[10px]">
-            <span className="text-zinc-600 uppercase">SESSION</span>
+            <span className="text-zinc-650 uppercase font-bold">SESSION</span>
             <span className="font-bold text-zinc-500">{durationLabel}</span>
           </div>
 
@@ -1238,6 +1291,15 @@ const HeaderStatus = React.memo(({
 
 HeaderStatus.displayName = 'HeaderStatus';
 
+const getSimulatedHours = (time: any) => {
+  if (!time) return 0;
+  const y = time.years - 1;
+  const m = time.months - 1;
+  const d = time.days - 1;
+  const h = time.hours;
+  return h + d * 24 + m * 30 * 24 + y * 12 * 30 * 24;
+};
+
 export default function CognitiveSimulator() {
   // useMotionValue core engine states bypass React render cycle completely
   const stimulationLevel = useMotionValue<number>(1);
@@ -1252,12 +1314,83 @@ export default function CognitiveSimulator() {
   const agencyScore = useMotionValue<number>(65);
   const meaningScore = useMotionValue<number>(75);
 
+  // States and refs needed by transforms declared early to avoid Temporal Dead Zone (TDZ)
+  const [activeArchetype, setActiveArchetype] = useState<string | null>(null);
+  const [flowWindowHoursRemaining, setFlowWindowHoursRemaining] = useState<number | null>(null);
+  const [sustainabilityExhausted, setSustainabilityExhausted] = useState<boolean>(false);
+
+  const activeArchetypeRef = useRef<string | null>(null);
+  const flowWindowHoursRemainingRef = useRef<number | null>(null);
+  const sustainabilityExhaustedRef = useRef<boolean>(false);
+  const prevSimulatedHoursRef = useRef<number | null>(null);
+  const isCompressionActiveRef = useRef<boolean>(false);
+  const elapsedSimulatedTimeRef = useRef<any>(null);
+
+  // Sync refs to state updates
+  activeArchetypeRef.current = activeArchetype;
+  flowWindowHoursRemainingRef.current = flowWindowHoursRemaining;
+  sustainabilityExhaustedRef.current = sustainabilityExhausted;
+
+  const [transitionProtocolActive, setTransitionProtocolActive] = useState<boolean>(false);
+  const [transitionTargetArchetypeId, setTransitionTargetArchetypeId] = useState<string | null>(null);
+
+  const nearestArchetype = useTransform(
+    [stimulationLevel, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction],
+    (values) => {
+      const [stim, sleep, social, econ, phys, synth] = values as number[];
+      
+      const sliders = {
+        stimulation: stim,
+        sleepDebt: sleep,
+        social: social,
+        economic: econ,
+        movement: phys,
+        synthetic: synth,
+      };
+
+      return ARCHETYPES.reduce((nearest, arch) => {
+        const dist = Math.sqrt(
+          Math.pow(sliders.stimulation - arch.targets.stimulation, 2) +
+          Math.pow(sliders.sleepDebt - arch.targets.sleepDebt, 2) +
+          Math.pow(sliders.social - arch.targets.socialPressure, 2) +
+          Math.pow(sliders.economic - arch.targets.economicStress, 2) +
+          Math.pow(sliders.movement - arch.targets.physicalMovement, 2) +
+          Math.pow(sliders.synthetic - arch.targets.syntheticInteraction, 2)
+        );
+        return dist < nearest.dist ? { name: arch.name, dist } : nearest;
+      }, { name: '', dist: Infinity }).name;
+    }
+  );
+
+  const [currentNearestArchetype, setCurrentNearestArchetype] = useState<string>('');
+  useEffect(() => {
+    const unsub = nearestArchetype.on("change", (val) => {
+      setCurrentNearestArchetype(val);
+    });
+    setCurrentNearestArchetype(nearestArchetype.get());
+    return unsub;
+  }, [nearestArchetype]);
+
+  // Reset transition protocol when preset archetype is selected from selector
+  useEffect(() => {
+    if (activeArchetype !== null) {
+      setTransitionProtocolActive(false);
+      setTransitionTargetArchetypeId(null);
+    }
+  }, [activeArchetype]);
+
   const attentionScore = useTransform(nervousSystemLoad, (load) => 100 - load);
 
   const flowProbability = useTransform(
     [attentionScore, agencyScore, nervousSystemLoad, meaningScore, socialPressure],
     (values) => {
       const [att, agency, load, meaning, social] = values as number[];
+
+      // Locked 0 if Deep Flow is active and exhausted
+      if (activeArchetypeRef.current === "Deep Flow" && sustainabilityExhaustedRef.current) {
+        return 0;
+      }
+
       const inFlowChannel = (
         att > 35 && // derived from load <= 65
         agency > 40 &&
@@ -1272,20 +1405,24 @@ export default function CognitiveSimulator() {
       const attentionContrib = (att - 35) / 65 * 0.3;
       const agencyContrib = (agency - 40) / 60 * 0.3;
       const loadContrib = 1 - Math.abs(load - 50) / 15 * 0.4;
-      return Math.min(1, Math.max(0, attentionContrib + agencyContrib + loadContrib));
+      const baseProb = Math.min(1, Math.max(0, attentionContrib + agencyContrib + loadContrib));
+
+      // Scale down with depletion factor in Deep Flow
+      if (activeArchetypeRef.current === "Deep Flow") {
+        const remaining = flowWindowHoursRemainingRef.current ?? 2.0;
+        const depletionFactor = Math.max(0, Math.min(1, remaining / 0.5));
+        return baseProb * depletionFactor;
+      }
+
+      return baseProb;
     }
   );
 
-  const [isOnboarded, setIsOnboarded] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('snm_onboarded') === 'true';
-    }
-    return true;
-  });
+  const [showOnboarding, setShowOnboarding] = useState(true);
 
   const [showPrescription, setShowPrescription] = useState<boolean>(false);
   const [currentInsight, setCurrentInsight] = useState<string>('');
-  const [profileLoaded, setProfileLoaded] = useState<boolean>(false);
+  const [profileLoaded, setProfileLoaded] = useState(false);
 
   const [isMuted, setIsMuted] = useState<boolean>(true);
   const [isRebooting, setIsRebooting] = useState<boolean>(false);
@@ -1295,7 +1432,76 @@ export default function CognitiveSimulator() {
   // Reflection Modal state
   const [sessionDuration, setSessionDuration] = useState<number>(0);
   const [showReflection, setShowReflection] = useState<boolean>(false);
-  const [activeArchetype, setActiveArchetype] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (activeArchetype === "Deep Flow") {
+      setFlowWindowHoursRemaining(2.0);
+      flowWindowHoursRemainingRef.current = 2.0;
+      setSustainabilityExhausted(false);
+      sustainabilityExhaustedRef.current = false;
+    } else {
+      setFlowWindowHoursRemaining(null);
+      flowWindowHoursRemainingRef.current = null;
+      setSustainabilityExhausted(false);
+      sustainabilityExhaustedRef.current = false;
+    }
+    prevSimulatedHoursRef.current = null;
+  }, [activeArchetype]);
+
+  const formatRemainingTime = (hoursDecimal: number) => {
+    const totalMinutes = Math.round(hoursDecimal * 60);
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    return `${h}h ${m}m remaining`;
+  };
+
+  const sustainabilityLabel = useMemo(() => {
+    if (activeArchetype === "Deep Flow" && flowWindowHoursRemaining !== null) {
+      return `FLOW WINDOW: ${formatRemainingTime(flowWindowHoursRemaining)}`;
+    }
+    return null;
+  }, [activeArchetype, flowWindowHoursRemaining]);
+
+  const targetSystemScores = useMemo(() => {
+    if (!transitionProtocolActive || !transitionTargetArchetypeId) return null;
+    const arch = ARCHETYPES.find(a => a.id === transitionTargetArchetypeId);
+    if (!arch) return null;
+
+    const t = arch.targets;
+    const targetLoad = Math.min(100, t.stimulation * (1 + (t.sleepDebt * 0.015)));
+    const targetCoherence = Math.max(0, 100 - t.syntheticInteraction);
+
+    let targetAgency = Math.max(0, Math.min(100,
+      30
+      + (t.physicalMovement * 0.30)
+      - (t.economicStress * 0.30)
+      - (t.sleepDebt * 0.25)
+      - (targetLoad * 0.15)
+    ));
+
+    let targetMeaning = Math.max(0, Math.min(100,
+      15
+      + (t.physicalMovement * 0.40)
+      - (t.stimulation * 0.25)
+      + (100 - t.syntheticInteraction) * 0.15
+      - (t.economicStress * 0.15)
+      - (t.sleepDebt * 0.10)
+    ));
+
+    if (arch.name === "Creative Solitude") {
+      targetAgency = Math.max(targetAgency, 75);
+      targetMeaning = Math.max(targetMeaning, 80);
+    }
+
+    return {
+      attention: Math.max(0, Math.min(100, 100 - targetLoad)),
+      nervous: targetLoad,
+      identity: targetCoherence,
+      agency: targetAgency,
+      meaning: targetMeaning
+    };
+  }, [transitionProtocolActive, transitionTargetArchetypeId]);
+
   const [systemStartScores, setSystemStartScores] = useState<SystemScores>({
     attention: 65,
     nervous: 1,
@@ -1309,43 +1515,27 @@ export default function CognitiveSimulator() {
   
   const sessionPeakLoad = useRef<number>(1);
 
-  // Load saved profile from localStorage on mount
   useEffect(() => {
-    if (isOnboarded && typeof window !== 'undefined') {
-      const profileStr = localStorage.getItem('snm_profile');
-      if (profileStr) {
-        try {
-          const profile = JSON.parse(profileStr);
-          stimulationLevel.set(profile.stimulationLevel ?? 1);
-          sleepDebt.set(profile.sleepDebt ?? 0);
-          socialPressure.set(profile.socialPressure ?? 20);
-          economicStress.set(profile.economicStress ?? 30);
-          physicalMovement.set(profile.physicalMovement ?? 50);
-          syntheticInteraction.set(profile.syntheticInteraction ?? 0);
-
-          // Calculate initial system scores from loaded profile
-          const load = Math.min(100, (profile.stimulationLevel ?? 1) * (1 + ((profile.sleepDebt ?? 0) * 0.015)));
-          const attention = 100 - load;
-          const agency = Math.max(0, Math.min(100, 30 + ((profile.physicalMovement ?? 50) * 0.30) - ((profile.economicStress ?? 30) * 0.30) - ((profile.sleepDebt ?? 0) * 0.25) - (load * 0.15)));
-          const meaning = Math.max(0, Math.min(100, 15 + ((profile.physicalMovement ?? 50) * 0.40) - ((profile.stimulationLevel ?? 1) * 0.25) + (100 - (profile.syntheticInteraction ?? 0)) * 0.15 - ((profile.economicStress ?? 30) * 0.15) - ((profile.sleepDebt ?? 0) * 0.10)));
-
-          setSystemStartScores({
-            attention,
-            nervous: load,
-            identity: Math.max(0, 100 - (profile.syntheticInteraction ?? 0)),
-            agency,
-            meaning
-          });
-
-          setProfileLoaded(true);
-          setTimeout(() => setProfileLoaded(false), 3000);
-        } catch (_e) {
-          // Invalid JSON, ignore
-        }
+    const saved = localStorage.getItem('snm_profile')
+    if (saved) {
+      try {
+        const profile = JSON.parse(saved)
+        // Set each slider MotionValue or state to the saved value.
+        // Use the exact setter names from this file.
+        // Only set values that exist in the profile object.
+        if (profile.stimulationLevel !== undefined) stimulationLevel.set(profile.stimulationLevel);
+        if (profile.sleepDebt !== undefined) sleepDebt.set(profile.sleepDebt);
+        if (profile.socialPressure !== undefined) socialPressure.set(profile.socialPressure);
+        if (profile.economicStress !== undefined) economicStress.set(profile.economicStress);
+        if (profile.physicalMovement !== undefined) physicalMovement.set(profile.physicalMovement);
+        if (profile.syntheticInteraction !== undefined) syntheticInteraction.set(profile.syntheticInteraction);
+        setProfileLoaded(true)
+        setTimeout(() => setProfileLoaded(false), 3000)
+      } catch (e) {
+        // malformed JSON — ignore
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [])
 
   // Track peak load during the session
   useEffect(() => {
@@ -1394,6 +1584,10 @@ export default function CognitiveSimulator() {
     agencyScore,
     meaningScore
   }, isRebooting, compressionSpeed);
+
+  // Sync time compression states to refs for loop closure safety
+  isCompressionActiveRef.current = isCompressionActive;
+  elapsedSimulatedTimeRef.current = elapsedSimulatedTime;
 
   // Custom callback to record event logs into the session history
   const handleEventTriggered = useCallback((eventName: string) => {
@@ -1497,7 +1691,7 @@ export default function CognitiveSimulator() {
 
       const currentLoad = nervousSystemLoad.get();
 
-      const targetAgency = Math.max(0, Math.min(100,
+      let targetAgency = Math.max(0, Math.min(100,
         30
         + (phys * 0.30)
         - (econ * 0.30)
@@ -1505,7 +1699,7 @@ export default function CognitiveSimulator() {
         - (currentLoad * 0.15)
       ));
 
-      const targetMeaning = Math.max(0, Math.min(100,
+      let targetMeaning = Math.max(0, Math.min(100,
         15
         + (phys * 0.40)
         - (stim * 0.25)
@@ -1513,6 +1707,11 @@ export default function CognitiveSimulator() {
         - (econ * 0.15)
         - (sleep * 0.10)
       ));
+
+      if (activeArchetypeRef.current === "Creative Solitude") {
+        targetAgency = Math.max(targetAgency, 75);
+        targetMeaning = Math.max(targetMeaning, 80);
+      }
 
       const driftStep = 1 * driftStepMultiplier;
       if (currentLoad < targetLoad) {
@@ -1522,10 +1721,14 @@ export default function CognitiveSimulator() {
       }
 
       const currentCoherence = identityCoherence.get();
+      let coherenceDrift = driftStep;
+      if (activeArchetypeRef.current === "Chronic Caregiver" && currentCoherence > targetCoherence) {
+        coherenceDrift = driftStep * 2.5;
+      }
       if (currentCoherence < targetCoherence) {
         identityCoherence.set(Math.min(targetCoherence, currentCoherence + driftStep));
       } else if (currentCoherence > targetCoherence) {
-        identityCoherence.set(Math.max(targetCoherence, currentCoherence - driftStep));
+        identityCoherence.set(Math.max(targetCoherence, currentCoherence - coherenceDrift));
       }
 
       const currentAgency = agencyScore.get();
@@ -1536,10 +1739,70 @@ export default function CognitiveSimulator() {
       }
 
       const currentMeaning = meaningScore.get();
+      let meaningDrift = driftStep;
+      if (activeArchetypeRef.current === "Digital Detox" && currentMeaning < targetMeaning) {
+        meaningDrift = driftStep * 0.3;
+      }
       if (currentMeaning < targetMeaning) {
-        meaningScore.set(Math.min(targetMeaning, currentMeaning + driftStep));
+        meaningScore.set(Math.min(targetMeaning, currentMeaning + meaningDrift));
       } else if (currentMeaning > targetMeaning) {
         meaningScore.set(Math.max(targetMeaning, currentMeaning - driftStep));
+      }
+
+      // Decrement flow window sustainability
+      if (activeArchetypeRef.current === "Deep Flow") {
+        let hoursDec = 0;
+        if (isCompressionActiveRef.current) {
+          const currHours = getSimulatedHours(elapsedSimulatedTimeRef.current);
+          const prevHours = prevSimulatedHoursRef.current;
+          if (prevHours !== null) {
+            hoursDec = Math.max(0, currHours - prevHours);
+          } else {
+            hoursDec = 0;
+          }
+          prevSimulatedHoursRef.current = currHours;
+        } else {
+          prevSimulatedHoursRef.current = null;
+          hoursDec = 0.01 * (tickInterval / 500);
+        }
+
+        const currentHoursRemaining = flowWindowHoursRemainingRef.current ?? 2.0;
+        const nextHours = Math.max(0, currentHoursRemaining - hoursDec);
+        const isExhausted = sustainabilityExhaustedRef.current;
+
+        if (nextHours === 0 && !isExhausted) {
+          // At 100% elapsed:
+          // 1. Fire a narrative event
+          setLogs(prev => {
+            const nextId = prev.length + 1;
+            const updated = [...prev, { id: nextId, text: "[CRIT] Flow window exhausted", type: "crit" }];
+            if (updated.length > 8) updated.shift();
+            return updated;
+          });
+          setSessionEventsHistory(prev => [...prev, { name: "Flow window exhausted", category: "destabilizer" }]);
+
+          setSustainabilityExhausted(true);
+          sustainabilityExhaustedRef.current = true;
+        }
+
+        setFlowWindowHoursRemaining(nextHours);
+        flowWindowHoursRemainingRef.current = nextHours;
+
+        // If exhausted, check if sleep debt has returned below 25 to recover
+        if (sustainabilityExhaustedRef.current) {
+          if (sleep < 25) {
+            setSustainabilityExhausted(false);
+            sustainabilityExhaustedRef.current = false;
+            setFlowWindowHoursRemaining(2.0);
+            flowWindowHoursRemainingRef.current = 2.0;
+          } else {
+            // Force sleepDebt +2 and stimulationLevel +5 per tick
+            sleepDebt.set(Math.min(100, sleep + 2));
+            stimulationLevel.set(Math.min(100, stim + 5));
+          }
+        }
+      } else {
+        prevSimulatedHoursRef.current = null;
       }
     }, tickInterval);
 
@@ -1841,17 +2104,20 @@ export default function CognitiveSimulator() {
       meaning
     });
 
-    setIsOnboarded(true);
+    setShowOnboarding(false);
   }, [sleepDebt, stimulationLevel, socialPressure, economicStress, physicalMovement, syntheticInteraction]);
 
-  const handleApplyPrescriptionTargets = useCallback((targets: {
-    stimulation?: number;
-    sleepDebt?: number;
-    socialPressure?: number;
-    economicStress?: number;
-    physicalMovement?: number;
-    syntheticInteraction?: number;
-  }) => {
+  const handleApplyPrescriptionTargets = useCallback((
+    targets: {
+      stimulation?: number;
+      sleepDebt?: number;
+      socialPressure?: number;
+      economicStress?: number;
+      physicalMovement?: number;
+      syntheticInteraction?: number;
+    },
+    targetArchetypeId: string | null
+  ) => {
     const duration = 3;
     const ease = "linear";
 
@@ -1875,7 +2141,17 @@ export default function CognitiveSimulator() {
     }
 
     setActiveArchetype(null);
-  }, [stimulationLevel, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction]);
+
+    if (targetArchetypeId) {
+      setTransitionTargetArchetypeId(targetArchetypeId);
+      setTransitionProtocolActive(true);
+
+      // Begin simulation automatically: if compression is not active, start it
+      if (!isCompressionActive) {
+        startCompression('day');
+      }
+    }
+  }, [stimulationLevel, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction, isCompressionActive, startCompression]);
 
   const handleReboot = () => {
     if (isRebooting) return;
@@ -1903,6 +2179,8 @@ export default function CognitiveSimulator() {
       meaningScore.set(75);
       setIsRebooting(false);
       setActiveArchetype(null);
+      setTransitionProtocolActive(false);
+      setTransitionTargetArchetypeId(null);
       setSessionDuration(0);
       sessionPeakLoad.current = 1;
       setSessionEventsHistory([]);
@@ -1991,7 +2269,7 @@ export default function CognitiveSimulator() {
     );
   }
 
-  if (!isOnboarded) {
+  if (showOnboarding) {
     return (
       <OnboardingQuestionnaire onComplete={handleOnboardingComplete} />
     );
@@ -2043,6 +2321,9 @@ export default function CognitiveSimulator() {
           window.location.reload();
         }}
         profileLoaded={profileLoaded}
+        sustainabilityLabel={sustainabilityLabel}
+        currentNearestArchetype={currentNearestArchetype}
+        transitionProtocolActive={transitionProtocolActive}
       />
 
       {/* Main Spatial Grid Workspace */}
@@ -2059,6 +2340,7 @@ export default function CognitiveSimulator() {
           isRebooting={isRebooting} 
           isCompressionActive={isCompressionActive}
           elapsedTime={elapsedSimulatedTime}
+          targetSystemScores={targetSystemScores}
         />
 
         {/* Center Panel - The Core Experiment */}
@@ -2211,20 +2493,14 @@ export default function CognitiveSimulator() {
               </div>
 
               {/* Spatial Alert/Notice Bar */}
-              <CriticalAlert nervousSystemLoad={nervousSystemLoad} />
+              <div className="w-full space-y-2">
+                <CriticalAlert nervousSystemLoad={nervousSystemLoad} />
+                <DepletionAlert show={sustainabilityExhausted && activeArchetype === "Deep Flow"} />
+              </div>
 
               {/* Diagnostic Monospace Readout (Vibe Friendly) */}
               <DiagnosticReadout 
-                stimulationLevel={stimulationLevel}
-                sleepDebt={sleepDebt}
                 nervousSystemLoad={nervousSystemLoad}
-                syntheticInteraction={syntheticInteraction}
-                identityCoherence={identityCoherence}
-                economicStress={economicStress}
-                physicalMovement={physicalMovement}
-                socialPressure={socialPressure}
-                agencyScore={agencyScore}
-                meaningScore={meaningScore}
               />
 
               {/* Timeline Scrubber & Compression Panel */}
@@ -2589,6 +2865,7 @@ export default function CognitiveSimulator() {
         activeArchetype={activeArchetype}
         insight={currentInsight}
         onApplyTargets={handleApplyPrescriptionTargets}
+        currentNearestArchetype={currentNearestArchetype}
       />
     </div>
   );

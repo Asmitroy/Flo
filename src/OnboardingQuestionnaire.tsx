@@ -29,6 +29,8 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
   const [errorMsg, setErrorMsg] = useState<string>('');
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const processingRef = useRef<boolean>(false);
+  const finishTriggeredRef = useRef<boolean>(false);
 
   const prompts = [
     "How many hours did you sleep last night? (0-12):",
@@ -56,7 +58,8 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
       
       const interval = setInterval(() => {
         if (!isCancelled) {
-          setDisplayedPrompt(prev => prev + targetText.charAt(index));
+          const char = targetText.charAt(index);
+          setDisplayedPrompt(prev => prev + char);
           index++;
           if (index >= targetText.length) {
             clearInterval(interval);
@@ -73,6 +76,7 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
 
   // Handle number rating selections for Q3, Q4, Q5
   const selectRating = (val: number) => {
+    if (processingRef.current) return;
     setErrorMsg('');
     if (currentStep === 2) {
       setFinancialRating(val);
@@ -81,6 +85,7 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
       setMovementRating(val);
       setTimeout(() => setCurrentStep(4), 200);
     } else if (currentStep === 4) {
+      processingRef.current = true;
       setComparisonRating(val);
       // Proceed to processing logs
       processOnboarding(sleepInput, screenTimeInput, financialRating!, movementRating!, val);
@@ -181,7 +186,8 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
 
     let logIndex = 0;
     const logInterval = setInterval(() => {
-      setTerminalLogs(prev => [...prev, logs[logIndex]]);
+      const currentLog = logs[logIndex];
+      setTerminalLogs(prev => [...prev, currentLog]);
       logIndex++;
       if (logIndex >= logs.length) {
         clearInterval(logInterval);
@@ -191,6 +197,8 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
   };
 
   const handleFinish = () => {
+    if (finishTriggeredRef.current) return;
+    finishTriggeredRef.current = true;
     const sleepHours = parseFloat(sleepInput);
     const screenHours = parseFloat(screenTimeInput);
     
@@ -211,6 +219,7 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
       socialPressure,
       timestamp: Date.now()
     }));
+
     onComplete({
       sleepDebt,
       stimulationLevel,
@@ -308,11 +317,14 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
           /* Logs Screen */
           <div className="space-y-6">
             <div className="space-y-1 h-[220px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#005522] pr-2 text-xs text-[#00dd55]/90 font-mono">
-              {terminalLogs.map((log, i) => (
-                <div key={i} className={log.startsWith("> [SUCCESS]") ? "text-yellow-400 font-bold" : log.includes("SUBJECT PROFILE INITIALIZED") ? "text-white font-extrabold text-sm py-1" : ""}>
-                  {log}
-                </div>
-              ))}
+              {terminalLogs.map((log, i) => {
+                if (!log) return null;
+                return (
+                  <div key={i} className={log.startsWith("> [SUCCESS]") ? "text-yellow-400 font-bold" : log.includes("SUBJECT PROFILE INITIALIZED") ? "text-white font-extrabold text-sm py-1" : ""}>
+                    {log}
+                  </div>
+                );
+              })}
               {!logsComplete && (
                 <div className="flex items-center space-x-1">
                   <span>&gt; processing</span>

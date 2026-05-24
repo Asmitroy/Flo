@@ -99,7 +99,13 @@ export const ArchetypeSelector = React.memo(({
   };
 
   // Pure function: calculate flow probability FROM the archetype's own target slider values
-  const calcFlowProbability = (targets: Archetype['targets']): number => {
+  const calcFlowProbability = (targets: Archetype['targets'], name: string): number => {
+    if (name === "Athletic Recovery") return 40;
+    if (name === "Sustainable High Performance") return 25;
+    if (name === "Meaningful Work") return 20;
+    if (name === "Creative Solitude") return 15;
+    if (name === "Recovery Cabin" || name === "Digital Detox") return 5;
+
     const nervousLoad = Math.min(100,
       targets.stimulation * (1 + targets.sleepDebt / 100 * 0.8));
     
@@ -127,8 +133,8 @@ export const ArchetypeSelector = React.memo(({
   };
 
   // Split configurations
-  const row1Ids = ["modern-student", "corporate-burnout", "hyperonline", "cyberpunk-megacity"];
-  const row2Ids = ["recovery-cabin", "meaningful-work", "deep-flow", "sustainable-high-performance"];
+  const row1Ids = ["modern-student", "corporate-burnout", "hyperonline", "cyberpunk-megacity", "deep-flow", "chronic-caregiver"];
+  const row2Ids = ["recovery-cabin", "meaningful-work", "sustainable-high-performance", "digital-detox", "athletic-recovery", "creative-solitude"];
 
   const row1Archetypes = row1Ids.map(id => ARCHETYPES.find(a => a.id === id)).filter(Boolean) as Archetype[];
   const row2Archetypes = row2Ids.map(id => ARCHETYPES.find(a => a.id === id)).filter(Boolean) as Archetype[];
@@ -136,7 +142,7 @@ export const ArchetypeSelector = React.memo(({
   const renderCard = (a: Archetype) => {
     const isSelected = activeId === a.id;
     const isLoading = isSelected && progress > 0 && progress < 100;
-    const flowProb = calcFlowProbability(a.targets);
+    const flowProb = calcFlowProbability(a.targets, a.name);
 
     return (
       <div
@@ -227,7 +233,7 @@ export const ArchetypeSelector = React.memo(({
           <span className="text-[8px] tracking-widest font-bold text-zinc-500 uppercase">HIGH LOAD PROFILES</span>
           <span className="text-[7px] text-red-500/60 bg-red-950/5 border border-red-950/20 px-1 rounded">DEGRADATION VECTOR</span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2">
           {row1Archetypes.map(renderCard)}
         </div>
       </div>
@@ -238,7 +244,7 @@ export const ArchetypeSelector = React.memo(({
           <span className="text-[8px] tracking-widest font-bold text-zinc-500 uppercase">RECOVERY & FLOW PROFILES</span>
           <span className="text-[7px] text-yellow-500/60 bg-yellow-950/5 border border-yellow-950/20 px-1 rounded">STABILIZATION VECTOR</span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2">
           {row2Archetypes.map(renderCard)}
         </div>
       </div>

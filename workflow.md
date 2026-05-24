@@ -265,16 +265,27 @@ I have successfully completed the implementation of the Cognitive Degradation UI
 
 ---
 
+## Onboarding Skip Logic, ExistentialDepth Rewrite & State Refactoring
+
+### 30. Onboarding Visibility & State Refactoring
+- Modified [src/OnboardingQuestionnaire.tsx](file:///d:/Codebase/Flo/src/OnboardingQuestionnaire.tsx) to ensure `localStorage.setItem('snm_onboarded', 'true')` and `localStorage.setItem('snm_profile', ...)` are set strictly before executing the `onComplete` callback.
+- Modified [src/CognitiveSimulator.tsx](file:///d:/Codebase/Flo/src/CognitiveSimulator.tsx):
+  - Refactored `isOnboarded` state variable to `showOnboarding` (inverting its boolean polarity, where `true` means show onboarding) and initialized it to `true` by default to ensure the onboarding questions are shown every time the website is loaded or refreshed:
+    `const [showOnboarding, setShowOnboarding] = useState(true);`
+  - Replaced the previous model's mount-time profile loading `useEffect` with a clean, decoupled mount effect at the top of the body that reads `snm_profile` from `localStorage` and sets each slider MotionValue if defined in the profile object.
+  - Subscribed to `meaningScore` changes inside the `RealtimeLogs` sub-component and stored the number value in a `currentMeaning` React state to pass it down cleanly to the rewritten `<ExistentialDepth>` component as a `number`.
+
+### 31. ExistentialDepth Component Rewrite
+- Completely rewrote [src/ExistentialDepth.tsx](file:///d:/Codebase/Flo/src/ExistentialDepth.tsx):
+  - Updated props to accept `meaningScore` as a `number` instead of a `MotionValue<number>`.
+  - Replaced Framer Motion complex direct DOM updates with standard state and inline styles with CSS transitions.
+  - Added a `<VoidTextCycle>` child component using Framer Motion (`motion.span`) to cyclically fade and rotate through distress/void words (`'emptiness'`, `'drift'`, `'nothing'`, `'later'`, `'eventually'`) when `meaningScore < 20`.
+  - Rendered status labels (`GROUNDED`, `DRIFTING`, `VOID`) in corresponding colors dynamically.
+
+---
+
 ## Verification Results
 
 ### TypeScript Compiler Check
-- Ran `npx tsc --noEmit -p tsconfig.app.json`.
-- **Clean output**: Zero errors or type warnings found.
-
-### Vite Production Build
-- Ran `npm run build`.
-- Production bundle successfully generated:
-  - `dist/index.html` (0.83 kB)
-  - `dist/assets/index-CRY4WISo.css` (36.34 kB)
-  - `dist/assets/index-fGjVVayR.js` (447.09 kB)
-  - Build execution time: **954ms**
+- Ran `npx tsc --noEmit -p tsconfig.app.json` and `npx tsc --noEmit`.
+- **Clean output**: Zero errors or warnings found in the workspace.

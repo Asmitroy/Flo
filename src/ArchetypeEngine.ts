@@ -10,6 +10,7 @@ export interface Archetype {
     physicalMovement: number;
     syntheticInteraction: number;
   };
+  sustainabilityHours?: number | null;
 }
 
 export const ARCHETYPES: Archetype[] = [
@@ -24,7 +25,8 @@ export const ARCHETYPES: Archetype[] = [
       economicStress: 60,
       physicalMovement: 20,
       syntheticInteraction: 60,
-    }
+    },
+    sustainabilityHours: null
   },
   {
     name: "Corporate Burnout",
@@ -37,7 +39,8 @@ export const ARCHETYPES: Archetype[] = [
       economicStress: 75,
       physicalMovement: 15,
       syntheticInteraction: 40,
-    }
+    },
+    sustainabilityHours: null
   },
   {
     name: "Hyperonline",
@@ -50,20 +53,8 @@ export const ARCHETYPES: Archetype[] = [
       economicStress: 30,
       physicalMovement: 10,
       syntheticInteraction: 85,
-    }
-  },
-  {
-    name: "Recovery Cabin",
-    id: "recovery-cabin",
-    summary: "Restful environment. High physical movement.",
-    targets: {
-      sleepDebt: 10,
-      stimulation: 5,
-      socialPressure: 10,
-      economicStress: 15,
-      physicalMovement: 80,
-      syntheticInteraction: 10,
-    }
+    },
+    sustainabilityHours: null
   },
   {
     name: "Cyberpunk Megacity",
@@ -76,7 +67,50 @@ export const ARCHETYPES: Archetype[] = [
       economicStress: 90,
       physicalMovement: 5,
       syntheticInteraction: 90,
-    }
+    },
+    sustainabilityHours: null
+  },
+  {
+    name: "Deep Flow",
+    id: "deep-flow",
+    summary: "High cognitive load. Peak output window. Finite.",
+    targets: {
+      sleepDebt: 15,
+      stimulation: 55,
+      socialPressure: 20,
+      economicStress: 25,
+      physicalMovement: 75,
+      syntheticInteraction: 15,
+    },
+    sustainabilityHours: 2
+  },
+  {
+    name: "Chronic Caregiver",
+    id: "chronic-caregiver",
+    summary: "Sustained emotional labour. Self-deprioritized.",
+    targets: {
+      sleepDebt: 70,
+      stimulation: 45,
+      socialPressure: 85,
+      economicStress: 65,
+      physicalMovement: 20,
+      syntheticInteraction: 60,
+    },
+    sustainabilityHours: null
+  },
+  {
+    name: "Recovery Cabin",
+    id: "recovery-cabin",
+    summary: "Restful environment. High physical movement.",
+    targets: {
+      sleepDebt: 10,
+      stimulation: 5,
+      socialPressure: 10,
+      economicStress: 15,
+      physicalMovement: 80,
+      syntheticInteraction: 10,
+    },
+    sustainabilityHours: null
   },
   {
     name: "Meaningful Work",
@@ -89,20 +123,8 @@ export const ARCHETYPES: Archetype[] = [
       economicStress: 35,
       physicalMovement: 55,
       syntheticInteraction: 25,
-    }
-  },
-  {
-    name: "Deep Flow",
-    id: "deep-flow",
-    summary: "High cognitive and physical load. Low social noise. Flow state probability: high.",
-    targets: {
-      sleepDebt: 15,
-      stimulation: 55,
-      socialPressure: 20,
-      economicStress: 25,
-      physicalMovement: 75,
-      syntheticInteraction: 15,
-    }
+    },
+    sustainabilityHours: null
   },
   {
     name: "Sustainable High Performance",
@@ -115,7 +137,50 @@ export const ARCHETYPES: Archetype[] = [
       economicStress: 40,
       physicalMovement: 60,
       syntheticInteraction: 25,
-    }
+    },
+    sustainabilityHours: null
+  },
+  {
+    name: "Digital Detox",
+    id: "digital-detox",
+    summary: "Intentional disconnection. Attention rebuilding.",
+    targets: {
+      sleepDebt: 15,
+      stimulation: 8,
+      socialPressure: 25,
+      economicStress: 30,
+      physicalMovement: 50,
+      syntheticInteraction: 5,
+    },
+    sustainabilityHours: null
+  },
+  {
+    name: "Athletic Recovery",
+    id: "athletic-recovery",
+    summary: "Physical load as cognitive medicine.",
+    targets: {
+      sleepDebt: 10,
+      stimulation: 20,
+      socialPressure: 30,
+      economicStress: 25,
+      physicalMovement: 90,
+      syntheticInteraction: 15,
+    },
+    sustainabilityHours: null
+  },
+  {
+    name: "Creative Solitude",
+    id: "creative-solitude",
+    summary: "Low noise. Internal signal. Slow output.",
+    targets: {
+      sleepDebt: 20,
+      stimulation: 30,
+      socialPressure: 15,
+      economicStress: 35,
+      physicalMovement: 40,
+      syntheticInteraction: 10,
+    },
+    sustainabilityHours: null
   }
 ];
 
