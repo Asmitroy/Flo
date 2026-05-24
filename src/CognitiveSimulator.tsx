@@ -387,6 +387,17 @@ const SimulationSlider = React.memo(({
 
 SimulationSlider.displayName = 'SimulationSlider';
 
+const getWeatherStateForTelemetry = (att: number, nrv: number, agc: number, mng: number, fp: number) => {
+  if (fp > 0.6) return 'flow';
+  if (mng < 20 && agc < 30) return 'void';
+  if (nrv > 70 || att < 40 || agc < 30) return 'storm';
+  if ((nrv >= 30 && nrv <= 70) || (att >= 40 && att <= 70) || (mng >= 30 && mng <= 60)) {
+    return 'overcast';
+  }
+  if (nrv < 30 && att > 70 && mng > 60) return 'clear';
+  return 'overcast';
+};
+
 interface HudTelemetryProps {
   nervousSystemLoad: MotionValue<number>;
   identityCoherence: MotionValue<number>;
@@ -398,6 +409,11 @@ interface HudTelemetryProps {
   isCompressionActive?: boolean;
   elapsedTime?: { hours: number, days: number, months: number, years: number };
   targetSystemScores?: SystemScores | null;
+  sleepDebt: MotionValue<number>;
+  stimulationLevel: MotionValue<number>;
+  socialPressure: MotionValue<number>;
+  economicStress: MotionValue<number>;
+  physicalMovement: MotionValue<number>;
 }
 
 const HudTelemetry = React.memo(({ 
@@ -410,13 +426,36 @@ const HudTelemetry = React.memo(({
   isRebooting,
   isCompressionActive = false,
   elapsedTime,
-  targetSystemScores
+  targetSystemScores,
+  sleepDebt,
+  stimulationLevel,
+  socialPressure,
+  economicStress,
+  physicalMovement
 }: HudTelemetryProps) => {
   const [nrvScore, setNrvScore] = useState(nervousSystemLoad.get());
   const [idnScore, setIdnScore] = useState(identityCoherence.get());
   const [agcScore, setAgcScore] = useState(agencyScore.get());
   const [mngScore, setMngScore] = useState(meaningScore.get());
   const [flowProbVal, setFlowProbVal] = useState(flowProbability.get());
+
+  const [sleepDebtVal, setSleepDebtVal] = useState(sleepDebt.get());
+  const [stimulationVal, setStimulationVal] = useState(stimulationLevel.get());
+  const [socialVal, setSocialVal] = useState(socialPressure.get());
+  const [economicVal, setEconomicVal] = useState(economicStress.get());
+  const [movementVal, setMovementVal] = useState(physicalMovement.get());
+
+  // Track scoring queue to estimate recovery velocity
+  const historyRef = useRef<Record<string, number[]>>({
+    attention: [],
+    nervous: [],
+    identity: [],
+    agency: [],
+    meaning: []
+  });
+
+  const [weatherState, setWeatherState] = useState<string>('');
+  const [stateDuration, setStateDuration] = useState<number>(0);
 
   useEffect(() => {
     const unsubNrv = nervousSystemLoad.on("change", (v) => setNrvScore(v));
@@ -425,14 +464,28 @@ const HudTelemetry = React.memo(({
     const unsubMng = meaningScore.on("change", (v) => setMngScore(v));
     const unsubFlow = flowProbability.on("change", (v) => setFlowProbVal(v));
 
+    const unsubSleep = sleepDebt.on("change", (v) => setSleepDebtVal(v));
+    const unsubStim = stimulationLevel.on("change", (v) => setStimulationVal(v));
+    const unsubSocial = socialPressure.on("change", (v) => setSocialVal(v));
+    const unsubEconomic = economicStress.on("change", (v) => setEconomicVal(v));
+    const unsubMovement = physicalMovement.on("change", (v) => setMovementVal(v));
+
     return () => {
       unsubNrv();
       unsubIdn();
       unsubAgc();
       unsubMng();
       unsubFlow();
+      unsubSleep();
+      unsubStim();
+      unsubSocial();
+      unsubEconomic();
+      unsubMovement();
     };
-  }, [nervousSystemLoad, identityCoherence, agencyScore, meaningScore, flowProbability]);
+  }, [
+    nervousSystemLoad, identityCoherence, agencyScore, meaningScore, flowProbability,
+    sleepDebt, stimulationLevel, socialPressure, economicStress, physicalMovement
+  ]);
 
   const attScore = 100 - nrvScore;
   const nrvWellness = 100 - nrvScore;
@@ -445,7 +498,29 @@ const HudTelemetry = React.memo(({
     { id: 'meaning', label: 'MEANING', score: mngScore, start: systemStartScores.meaning },
   ];
 
-  // Helper to format deltas
+  // Tick the scoring history queue
+  useEffect(() => {
+    const sysKeys = ['attention', 'nervous', 'identity', 'agency', 'meaning'] as const;
+    const currentValues = {
+      attention: attScore,
+      nervous: nrvWellness,
+      identity: idnScore,
+      agency: agcScore,
+      meaning: mngScore
+    };
+    sysKeys.forEach(key => {
+      const q = historyRef.current[key];
+      const newVal = currentValues[key];
+      if (q.length === 0 || q[q.length - 1] !== newVal) {
+        q.push(newVal);
+        if (q.length > 5) {
+          q.shift();
+        }
+      }
+    });
+  }, [attScore, nrvWellness, idnScore, agcScore, mngScore]);
+
+  // Format deltas
   const renderDelta = (current: number, start: number, id: string) => {
     const startVal = id === 'nervous' ? (100 - start) : start;
     const diff = current - startVal;
@@ -491,6 +566,83 @@ const HudTelemetry = React.memo(({
       readoutText = "Existential anchoring weak. Purpose signal below coherence threshold.";
     }
   }
+
+  // 1. SESSION RISK INDICATOR
+  const degradedSystems = [attScore, nrvWellness, idnScore, agcScore, mngScore]
+    .filter(s => s < 40).length;
+  const risk = degradedSystems === 0 ? 'LOW'
+    : degradedSystems === 1 ? 'MODERATE'
+    : degradedSystems === 2 ? 'HIGH'
+    : 'CRITICAL';
+
+  let riskColor = "text-emerald-400 font-bold";
+  if (risk === 'MODERATE') {
+    riskColor = "text-amber-400 font-bold";
+  } else if (risk === 'HIGH') {
+    riskColor = "text-rose-500 font-bold";
+  } else if (risk === 'CRITICAL') {
+    riskColor = "text-rose-500 font-bold animate-pulse";
+  }
+
+  // 2. DOMINANT STRESSOR
+  const stressorContributions = {
+    'SLEEP DEBT': sleepDebtVal * 1.5,
+    'STIMULATION': stimulationVal * 1.2,
+    'ECONOMIC STRESS': economicVal * 1.0,
+    'SOCIAL PRESSURE': socialVal * 0.8,
+    'LOW MOVEMENT': (100 - movementVal) * 0.9
+  };
+  const sortedContributions = Object.entries(stressorContributions)
+    .sort(([, a], [, b]) => b - a);
+  const primaryStressor = sortedContributions[0][1] > 40 ? sortedContributions[0][0] : 'NONE';
+
+  // 3. RECOVERY VELOCITY
+  const lowestSystemKey = Object.entries({
+    attention: attScore,
+    nervous: nrvWellness,
+    identity: idnScore,
+    agency: agcScore,
+    meaning: mngScore
+  }).sort(([, a], [, b]) => a - b)[0][0] as 'attention' | 'nervous' | 'identity' | 'agency' | 'meaning';
+
+  const lowestHistory = historyRef.current[lowestSystemKey];
+  let rateOfChange = 0;
+  if (lowestHistory.length >= 2) {
+    rateOfChange = (lowestHistory[lowestHistory.length - 1] - lowestHistory[0]) / (lowestHistory.length - 1);
+  }
+
+  const formattedRate = rateOfChange.toFixed(1);
+  const rateText = rateOfChange >= 0 ? `+${formattedRate}/tick` : `${formattedRate}/tick`;
+  const rateColor = rateOfChange >= 0 ? "text-emerald-400" : "text-rose-500 font-bold";
+
+  // 4. TIME IN CURRENT STATE
+  const resolvedWeather = getWeatherStateForTelemetry(attScore, nrvScore, agcScore, mngScore, flowProbVal);
+  const weatherLabelMap: Record<string, string> = {
+    clear: "COGNITIVE CLARITY",
+    overcast: "ELEVATED LOAD",
+    storm: "COGNITIVE STORM",
+    void: "DISSOCIATIVE STATE",
+    flow: "FLOW STATE ACTIVE"
+  };
+  const weatherLabel = weatherLabelMap[resolvedWeather] || "UNKNOWN";
+
+  useEffect(() => {
+    setStateDuration(0);
+    setWeatherState(weatherLabel);
+  }, [weatherLabel]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setStateDuration(prev => prev + 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}m ${secs}s`;
+  };
 
   return (
     <section className="lg:col-span-1 bg-zinc-950/40 border border-zinc-900/60 rounded-lg p-5 backdrop-blur-lg flex flex-col justify-between select-none">
@@ -540,7 +692,7 @@ const HudTelemetry = React.memo(({
                 </div>
                 <div className="relative w-full bg-zinc-900/60 h-1.5 rounded overflow-hidden">
                   <motion.div 
-                    className="h-full rounded"
+                     className="h-full rounded"
                     animate={{ width: `${Math.max(2, sys.score)}%` }}
                     transition={{ duration: 0.3 }}
                     style={{ backgroundColor: isCrit ? '#e11d48' : (isDeg ? '#d97706' : '#e4e4e7') }}
@@ -587,15 +739,52 @@ const HudTelemetry = React.memo(({
             <AgencyMeter agencyScore={agencyScore} />
           </div>
 
+          {/* ENHANCED SYSTEMS ANALYSIS PANEL */}
           <div className="pt-2">
-            <div className="bg-black/40 border border-zinc-900 rounded p-3 text-[10px] font-mono space-y-1.5 leading-relaxed text-zinc-500">
-              <div className="flex items-center space-x-1.5 text-zinc-400">
+            <div className="bg-black/40 border border-zinc-900 rounded p-3 text-[10px] font-mono space-y-2.5 leading-relaxed text-zinc-500">
+              <div className="flex items-center space-x-1.5 text-zinc-400 border-b border-zinc-900 pb-1.5">
                 <Info className="w-3 h-3 text-indigo-400" />
-                <span className="font-bold">HEURISTIC READOUT</span>
+                <span className="font-bold uppercase tracking-wider text-[9px]">SYSTEMS ANALYSIS</span>
               </div>
-              <p className={readoutColor}>
-                {isRebooting ? "REBOOTING..." : readoutText}
-              </p>
+
+              {/* SESSION RISK INDICATOR */}
+              <div className="flex justify-between items-center text-[9px]">
+                <span>SESSION RISK</span>
+                <span className={`font-mono text-[9px] uppercase ${riskColor}`}>
+                  {risk}
+                </span>
+              </div>
+
+              {/* DOMINANT STRESSOR */}
+              <div className="flex justify-between items-center text-[9px]">
+                <span>PRIMARY STRESSOR</span>
+                <span className="font-bold text-zinc-300">
+                  {primaryStressor}
+                </span>
+              </div>
+
+              {/* RECOVERY VELOCITY */}
+              <div className="flex justify-between items-center text-[9px]">
+                <span>{rateOfChange >= 0 ? "RECOVERY RATE" : "DEGRADATION"}</span>
+                <span className={`font-mono text-[9px] ${rateColor}`}>
+                  {rateText}
+                </span>
+              </div>
+
+              {/* TIME IN CURRENT STATE */}
+              <div className="flex justify-between items-center text-[9px]">
+                <span>STATE DURATION</span>
+                <span className="font-bold text-zinc-300 text-right">
+                  {formatDuration(stateDuration)} <span className="text-[8px] text-zinc-500 font-normal">in</span> <span className={resolvedWeather === 'storm' || resolvedWeather === 'void' ? 'text-rose-400 font-semibold' : resolvedWeather === 'flow' ? 'text-[#F5C842] font-semibold' : 'text-zinc-300'}>{weatherState}</span>
+                </span>
+              </div>
+
+              {/* Status Analysis details (Heuristic Readout Merged) */}
+              <div className="pt-2 border-t border-zinc-900/50">
+                <p className={readoutColor}>
+                  {isRebooting ? "REBOOTING..." : readoutText}
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -2331,6 +2520,11 @@ export default function CognitiveSimulator() {
           isCompressionActive={isCompressionActive}
           elapsedTime={elapsedSimulatedTime}
           targetSystemScores={targetSystemScores}
+          sleepDebt={sleepDebt}
+          stimulationLevel={stimulationLevel}
+          socialPressure={socialPressure}
+          economicStress={economicStress}
+          physicalMovement={physicalMovement}
         />
 
         {/* Center Panel - The Core Experiment */}

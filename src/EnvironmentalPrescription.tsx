@@ -337,15 +337,15 @@ export const EnvironmentalPrescription: React.FC<EnvironmentalPrescriptionProps>
 
             {/* SECTION 1 - DIAGNOSIS */}
             <div>
-              <SectionLabel>SECTION 1 — DIAGNOSIS</SectionLabel>
+              <SectionLabel>01 — DIAGNOSIS</SectionLabel>
               <div style={{ fontSize: '10px', lineHeight: '1.5', color: '#888', fontStyle: 'italic' }}>
                 {insight}
               </div>
             </div>
 
-            {/* SECTION 0 — TRANSITION TARGET */}
+            {/* SECTION 2 — TRANSITION TARGET */}
             <div>
-              <SectionLabel>SECTION 0 — TRANSITION TARGET</SectionLabel>
+              <SectionLabel>02 — TRANSITION TARGET</SectionLabel>
               <div style={{ fontSize: '10px', color: '#888', marginBottom: '8px' }}>
                 You are currently operating closest to: <span style={{ color: '#fff', fontWeight: 'bold' }}>{currentNearestArchetype || "Manual"}</span>
               </div>
@@ -400,9 +400,9 @@ export const EnvironmentalPrescription: React.FC<EnvironmentalPrescriptionProps>
               </div>
             </div>
 
-            {/* SECTION 2 - TARGET ENVIRONMENT */}
+            {/* SECTION 3 - TARGET ENVIRONMENT */}
             <div>
-              <SectionLabel>SECTION 2 — TARGET ENVIRONMENT</SectionLabel>
+              <SectionLabel>03 — TARGET ENVIRONMENT</SectionLabel>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginTop: '4px' }}>
                 {visibleDeltas.map(({ key, currentVal, targetVal, delta }) => {
                   let directionArrow = ' ';
@@ -465,17 +465,17 @@ export const EnvironmentalPrescription: React.FC<EnvironmentalPrescriptionProps>
               )}
             </div>
 
-            {/* SECTION 3 - TRANSITION PROTOCOL */}
+            {/* SECTION 4 - TRANSITION PROTOCOL */}
             <div>
-              <SectionLabel>SECTION 3 — TRANSITION PROTOCOL</SectionLabel>
+              <SectionLabel>04 — TRANSITION PROTOCOL</SectionLabel>
               <div style={{ background: '#070707', border: '1px solid #141414', padding: '10px', marginTop: '2px' }}>
                 {renderTransitionProtocol()}
               </div>
             </div>
 
-            {/* SECTION 4 - MAINTENANCE NOTE */}
+            {/* SECTION 5 - MAINTENANCE NOTE */}
             <div>
-              <SectionLabel>SECTION 4 — MAINTENANCE NOTE</SectionLabel>
+              <SectionLabel>05 — MAINTENANCE NOTE</SectionLabel>
               <div style={{ fontSize: '10px', lineHeight: '1.4', color: '#777' }}>
                 {maintenanceNote}
               </div>

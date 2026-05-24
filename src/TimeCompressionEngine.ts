@@ -216,83 +216,49 @@ export function useTimeCompression(
     const fastestDegraded = sorted[0];
     const mostResilient = sorted[sorted.length - 1];
 
-    // Generate descriptive 3-sentence narrative
-    let s1: string;
-    
-    // Get start and end values for the chosen fastestDegraded system
-    const currentLoad = sliderValues.nervousSystemLoad.get();
-    const currentCoherence = sliderValues.identityCoherence.get();
-    const currentAgency = sliderValues.agencyScore.get();
-    const currentMeaning = sliderValues.meaningScore.get();
+    const systemVariances = {
+      nervous: Math.abs(peaks.load - troughs.load),
+      identity: Math.abs(peaks.coherence - troughs.coherence),
+      agency: Math.abs(peaks.agency - troughs.agency),
+      meaning: Math.abs(peaks.meaning - troughs.meaning)
+    };
 
-    let startVal = 0;
-    let endVal = 0;
-    if (fastestDegraded.id === 'load') {
-      startVal = initials.load;
-      endVal = currentLoad;
-    } else if (fastestDegraded.id === 'coherence') {
-      startVal = initials.coherence;
-      endVal = currentCoherence;
-    } else if (fastestDegraded.id === 'agency') {
-      startVal = initials.agency;
-      endVal = currentAgency;
-    } else if (fastestDegraded.id === 'meaning') {
-      startVal = initials.meaning;
-      endVal = currentMeaning;
-    }
+    const systemNames = {
+      nervous: 'nervous system load',
+      identity: 'identity coherence',
+      agency: 'agency index',
+      meaning: 'existential stability'
+    };
 
-    const netChange = endVal - startVal;
-    const hasSignificantChange = Math.abs(netChange) >= 2;
-    const roundedValue = Math.round(Math.abs(netChange));
+    const mostVolatile = Object.entries(systemVariances)
+      .sort(([, a], [, b]) => b - a)[0][0] as keyof typeof systemNames;
+    const mostStable = Object.entries(systemVariances)
+      .sort(([, a], [, b]) => a - b)[0][0] as keyof typeof systemNames;
 
-    if (fastestDegraded.id === 'load') {
-      if (hasSignificantChange) {
-        s1 = `The subject experienced severe neural hyper-arousal, with nervous system load climbing rapidly by +${roundedValue}% and peaking at ${Math.round(peaks.load)}% under the weight of external stimulation.`;
-      } else {
-        s1 = `The subject maintained autonomic regulation, with nervous system load remaining stable, peaking at ${Math.round(peaks.load)}% under the weight of external stimulation.`;
-      }
-    } else if (fastestDegraded.id === 'coherence') {
-      if (hasSignificantChange) {
-        s1 = `The system suffered critical boundary failure, with identity coherence collapsing by -${roundedValue}% to a trough of ${Math.round(troughs.coherence)}% as internal anchors dissolved.`;
-      } else {
-        s1 = `The system preserved its structural integrity, with identity coherence remaining stable at a trough of ${Math.round(troughs.coherence)}% as internal anchors held.`;
-      }
-    } else if (fastestDegraded.id === 'agency') {
-      if (hasSignificantChange) {
-        s1 = `Learned helplessness set in rapidly, causing agency to drop by -${roundedValue}% and bottoming out at ${Math.round(troughs.agency)}% as control mechanisms broke down.`;
-      } else {
-        s1 = `Agency remained stable, bottoming out at ${Math.round(troughs.agency)}% as control mechanisms held.`;
-      }
-    } else {
-      if (hasSignificantChange) {
-        s1 = `Existential stability collapsed first, with meaning dropping by -${roundedValue}% and troughing at ${Math.round(troughs.meaning)}% under the inflation of screen exposure and low physical connection.`;
-      } else {
-        s1 = `Existential stability remained stable at a trough of ${Math.round(troughs.meaning)}% under the inflation of screen exposure and low physical connection.`;
-      }
-    }
+    // Opening sentence — what actually happened
+    const s1 = peaks.load > 70
+      ? `The subject experienced severe neural hyper-arousal, with nervous system load climbing by +${Math.round(peaks.load - troughs.load)}% and peaking at ${Math.round(peaks.load)}%.`
+      : peaks.load >= 30
+      ? `The subject experienced moderate neural activation, with load reaching ${Math.round(peaks.load)}% before stabilizing.`
+      : `The subject maintained low neural load throughout, peaking at ${Math.round(peaks.load)}%.`;
 
-    let s2: string;
-    if (mostResilient.id === 'load') {
-      s2 = `In contrast, the subject's nervous system load displayed remarkable stability, resisting the worst spikes and keeping systemic stress bound to manageable thresholds.`;
-    } else if (mostResilient.id === 'coherence') {
-      s2 = `Throughout the timeline, identity coherence demonstrated excellent structural resilience, buffering core mental states and shielding the sense of self.`;
-    } else if (mostResilient.id === 'agency') {
-      s2 = `Despite the collapse of other indicators, agency remained highly resilient, preserving the subject's active capacity for control and willpower.`;
-    } else {
-      s2 = `Existential stability served as the primary anchor, with the meaning score showing extreme resilience and refusing to collapse even as other metrics deteriorated.`;
-    }
+    // Middle sentence — most volatile system
+    const s2 = `${systemNames[mostVolatile].charAt(0).toUpperCase() + systemNames[mostVolatile].slice(1)} showed the greatest volatility, ranging ±${Math.round(systemVariances[mostVolatile])}% across the timeline.`;
 
-    let s3: string;
-    const peakNervousLoad = peaks.load;
-    if (peakNervousLoad > 70) {
-      s3 = "The timeline concludes with the subject in a state of profound mental static and cognitive exhaustion, showing minimal capacity for recovery without total environment reconfiguration.";
-    } else if (peakNervousLoad >= 30) {
-      s3 = "The subject survives the exposure in a state of functional burnout—maintaining system boundaries but showing high latent strain and reduced cognitive energy.";
-    } else {
-      s3 = "The subject successfully integrated environmental changes, completing the timeline in a state of balanced synaptic harmony and structural stability.";
-    }
+    // Resilience sentence — most stable system
+    const s3stable = systemVariances[mostStable] < 5
+      ? `${systemNames[mostStable].charAt(0).toUpperCase() + systemNames[mostStable].slice(1)} remained anchored throughout, showing minimal variance.`
+      : `${systemNames[mostStable].charAt(0).toUpperCase() + systemNames[mostStable].slice(1)} demonstrated the strongest resilience, holding within ±${Math.round(systemVariances[mostStable])}%.`;
 
-    const narrative = `${s1} ${s2} ${s3}`;
+    // Closing sentence — end state
+    const endLoad = troughs.load;  // load at end of run
+    const s4 = endLoad > 60
+      ? `The timeline concludes with the subject in a state of profound mental static and cognitive exhaustion, showing minimal capacity for recovery without total environment reconfiguration.`
+      : endLoad > 30
+      ? `The timeline concludes with systems partially recovered, operating at reduced but functional capacity.`
+      : `The timeline concludes with the subject in a stable, recovered state. Environmental conditions supported system restoration.`;
+
+    const narrative = `${s1} ${s2} ${s3stable} ${s4}`;
 
     return {
       mode: finalMode,
