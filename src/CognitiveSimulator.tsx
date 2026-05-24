@@ -2530,7 +2530,28 @@ export default function CognitiveSimulator() {
         {/* Center Panel - The Core Experiment */}
         <section className="col-span-1 lg:col-span-4 flex flex-col justify-between items-center bg-zinc-950/20 border border-zinc-900/60 rounded-lg p-6 backdrop-blur-sm relative">
           
-          {/* Cognitive Weather visualizer (takes full width, centered) */}
+          {/* Cognitive State Label (Title and Subtitle) */}
+          <div className="w-full text-center mb-4 select-none">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={quadrant.key}
+                initial={{ opacity: 0, filter: "blur(10px)" }}
+                animate={{ opacity: 1, filter: "blur(0px)" }}
+                exit={{ opacity: 0, filter: "blur(10px)" }}
+                transition={{ duration: 1.5, ease: "easeInOut" }}
+                className="space-y-2 border-b border-zinc-900/40 pb-3"
+              >
+                <h1 className="font-display text-sm tracking-wider text-zinc-100 uppercase font-extrabold text-center">
+                  {quadrant.title}
+                </h1>
+                <p className="font-mono text-[9px] text-zinc-500 leading-normal uppercase tracking-wide text-center">
+                  {quadrant.subtitle}
+                </p>
+              </motion.div>
+            </AnimatePresence>
+          </div>
+
+          {/* Cognitive Weather visualizer (centered, minimum height 280px) */}
           <div className="w-full flex-1 flex items-center justify-center relative min-h-[280px]">
             <CognitiveWeather 
               attention={attentionScore}
@@ -2542,35 +2563,16 @@ export default function CognitiveSimulator() {
             />
           </div>
 
-          {/* Unified Center Layout containing Cognitive State Label & Identity Text Block */}
-          <div className="w-full max-w-xl flex flex-col space-y-6 relative pb-6">
+          {/* Identity Core banner & Identity Text Block below weather circles */}
+          <div className="w-full max-w-xl flex flex-col space-y-4 relative py-4">
             <div className="relative w-full z-10">
               <IdentityCore coherence={identityCoherence} />
 
-              <div className="flex flex-col space-y-4 relative z-20 w-full text-center">
-                {/* Dynamic Title and Subtitle with Crossfade transition */}
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={quadrant.key}
-                    initial={{ opacity: 0, filter: "blur(10px)" }}
-                    animate={{ opacity: 1, filter: "blur(0px)" }}
-                    exit={{ opacity: 0, filter: "blur(10px)" }}
-                    transition={{ duration: 1.5, ease: "easeInOut" }}
-                    className="space-y-2 border-b border-zinc-900/40 pb-3 select-none"
-                  >
-                    <h1 className="font-display text-sm tracking-wider text-zinc-100 uppercase font-extrabold text-center">
-                      {quadrant.title}
-                    </h1>
-                    <p className="font-mono text-[9px] text-zinc-500 leading-normal uppercase tracking-wide text-center">
-                      {quadrant.subtitle}
-                    </p>
-                  </motion.div>
-                </AnimatePresence>
-
+              <div className="flex flex-col relative z-20 w-full text-center mt-3">
                 {/* Direct DOM rendering of scrambled, wiggling text */}
                 <motion.div 
                   ref={textContainerRef}
-                  className="text-center transition-all duration-300 leading-relaxed overflow-visible text-zinc-200 text-xs tracking-wide max-w-xl mx-auto"
+                  className="text-center transition-all duration-300 leading-relaxed overflow-y-auto max-h-[120px] text-zinc-200 text-xs tracking-wide max-w-xl mx-auto"
                   style={{
                     letterSpacing,
                     filter: textFilter

@@ -74,6 +74,30 @@ export const EnvironmentalPrescription: React.FC<EnvironmentalPrescriptionProps>
 
   const targetProfiles = ARCHETYPES.filter(a => RECOVERY_AND_FLOW_IDS.includes(a.id));
 
+  const getFlowProbability = (name: string): number => {
+    if (name === "Athletic Recovery") return 40;
+    if (name === "Sustainable High Performance") return 25;
+    if (name === "Meaningful Work") return 20;
+    if (name === "Creative Solitude") return 15;
+    if (name === "Recovery Cabin" || name === "Digital Detox") return 5;
+    return 0;
+  };
+
+  const bestFitArchetype = targetProfiles.reduce((best, arch) => {
+    const flowProb = getFlowProbability(arch.name);
+    if (flowProb === 0) return best;
+    
+    const totalDelta = Math.abs(arch.targets.stimulation - sliderValues.stimulation)
+      + Math.abs(arch.targets.sleepDebt - sliderValues.sleepDebt)
+      + Math.abs(arch.targets.physicalMovement - sliderValues.physicalMovement)
+      + Math.abs(arch.targets.economicStress - sliderValues.economicStress)
+      + Math.abs(arch.targets.socialPressure - sliderValues.socialPressure)
+      + Math.abs(arch.targets.syntheticInteraction - sliderValues.syntheticInteraction);
+    
+    const score = flowProb / (totalDelta + 1) * 100;
+    return score > best.score ? { name: arch.name, score } : best;
+  }, { name: '', score: 0 });
+
   // 1. Identify primary failure
   const wellnessScores = {
     attention: systemScores.attention,
@@ -355,7 +379,7 @@ export const EnvironmentalPrescription: React.FC<EnvironmentalPrescriptionProps>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '4px' }}>
                 {targetProfiles.map((arch) => {
                   const isSelected = selectedTargetId === arch.id;
-                  const isMaxFlow = arch.id === "athletic-recovery";
+                  const isBestFit = arch.name === bestFitArchetype.name;
                   return (
                     <button
                       key={arch.id}
@@ -381,7 +405,7 @@ export const EnvironmentalPrescription: React.FC<EnvironmentalPrescriptionProps>
                       <span style={{ fontWeight: isSelected ? 'bold' : 'normal', textTransform: 'uppercase', fontSize: '8px' }}>
                         {arch.name}
                       </span>
-                      {isMaxFlow && (
+                      {isBestFit && (
                         <span style={{ 
                           fontSize: '7px', 
                           color: isSelected ? '#fff' : '#c2992b',
@@ -391,7 +415,7 @@ export const EnvironmentalPrescription: React.FC<EnvironmentalPrescriptionProps>
                           fontWeight: 'bold',
                           marginTop: '2px'
                         }}>
-                          MAX FLOW
+                          BEST FIT FOR YOU
                         </span>
                       )}
                     </button>
