@@ -57,6 +57,52 @@ const WARNING_POOL = [
   "SUB-NEURAL RE-ENTRANT LOOP ACTIVE"
 ];
 
+interface WeatherConfig {
+  title: string;
+  label: string;
+  subtitle: string;
+  colorClass: string;
+}
+
+const WEATHER_MAPPING: Record<'clear' | 'cloudy' | 'rainy' | 'storm' | 'void' | 'flow', WeatherConfig> = {
+  clear: {
+    title: "SYNAPTIC HARMONY",
+    label: "SYNAPTIC HARMONY",
+    subtitle: "The mind rests in calibrated precision. Neuronal pathways fire in perfect, quiet consensus.",
+    colorClass: "text-indigo-400"
+  },
+  cloudy: {
+    title: "MINIMAL DRIFT",
+    label: "MINIMAL DRIFT",
+    subtitle: "The anchor has slipped slightly, and we drift through quiet grey space.",
+    colorClass: "text-zinc-400"
+  },
+  rainy: {
+    title: "ELEVATED LOAD",
+    label: "ELEVATED LOAD",
+    subtitle: "The synapses are flooded, yet the boundaries hold. We are racing to keep the shape from splintering.",
+    colorClass: "text-amber-500/80"
+  },
+  storm: {
+    title: "COGNITIVE STORM",
+    label: "COGNITIVE STORM",
+    subtitle: "Total collapse imminent. The syntax of existence fractures into white noise.",
+    colorClass: "text-rose-500 animate-pulse"
+  },
+  void: {
+    title: "DISSOCIATIVE VOID",
+    label: "DISSOCIATIVE VOID",
+    subtitle: "The signals are silent, yet we are no longer here. We drift through empty space.",
+    colorClass: "text-rose-950 font-bold animate-pulse"
+  },
+  flow: {
+    title: "FLOW STATE ACTIVE",
+    label: "FLOW STATE ACTIVE",
+    subtitle: "Deep focus channel engaged. Environmental noise is completely filtered out.",
+    colorClass: "text-[#F5C842] font-bold"
+  }
+};
+
 // Audio Synthesizer Class
 class NeuralSynth {
   private ctx: AudioContext | null = null;
@@ -193,6 +239,18 @@ class NeuralSynth {
         this.masterGain.gain.linearRampToValueAtTime(0.2, resetTime + 0.5);
       }
     }, 200);
+  }
+
+  suspend() {
+    if (this.ctx && this.ctx.state !== 'suspended') {
+      this.ctx.suspend();
+    }
+  }
+
+  resume() {
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
   }
 
   stop() {
@@ -435,50 +493,56 @@ const HudTelemetry = React.memo(({
   physicalMovement,
   syntheticInteraction
 }: HudTelemetryProps) => {
-  const [nrvScore, setNrvScore] = useState(nervousSystemLoad.get());
-  const [idnScore, setIdnScore] = useState(identityCoherence.get());
-  const [agcScore, setAgcScore] = useState(agencyScore.get());
-  const [mngScore, setMngScore] = useState(meaningScore.get());
-  const [flowProbVal, setFlowProbVal] = useState(flowProbability.get());
-
-  const [sleepDebtVal, setSleepDebtVal] = useState(sleepDebt.get());
-  const [stimulationVal, setStimulationVal] = useState(stimulationLevel.get());
-  const [socialVal, setSocialVal] = useState(socialPressure.get());
-  const [economicVal, setEconomicVal] = useState(economicStress.get());
-  const [movementVal, setMovementVal] = useState(physicalMovement.get());
-  const [synthVal, setSynthVal] = useState(syntheticInteraction.get());
+  const [displayScores, setDisplayScores] = useState({
+    attention: Math.round(100 - nervousSystemLoad.get()),
+    nervous: Math.round(nervousSystemLoad.get()),
+    identity: Math.round(identityCoherence.get()),
+    agency: Math.round(agencyScore.get()),
+    meaning: Math.round(meaningScore.get()),
+    flow: flowProbability.get(),
+    sleep: Math.round(sleepDebt.get()),
+    stim: Math.round(stimulationLevel.get()),
+    social: Math.round(socialPressure.get()),
+    econ: Math.round(economicStress.get()),
+    phys: Math.round(physicalMovement.get()),
+    synth: Math.round(syntheticInteraction.get()),
+  });
 
   useEffect(() => {
-    const unsubNrv = nervousSystemLoad.on("change", (v) => setNrvScore(v));
-    const unsubIdn = identityCoherence.on("change", (v) => setIdnScore(v));
-    const unsubAgc = agencyScore.on("change", (v) => setAgcScore(v));
-    const unsubMng = meaningScore.on("change", (v) => setMngScore(v));
-    const unsubFlow = flowProbability.on("change", (v) => setFlowProbVal(v));
-
-    const unsubSleep = sleepDebt.on("change", (v) => setSleepDebtVal(v));
-    const unsubStim = stimulationLevel.on("change", (v) => setStimulationVal(v));
-    const unsubSocial = socialPressure.on("change", (v) => setSocialVal(v));
-    const unsubEconomic = economicStress.on("change", (v) => setEconomicVal(v));
-    const unsubMovement = physicalMovement.on("change", (v) => setMovementVal(v));
-    const unsubSynth = syntheticInteraction.on("change", (v) => setSynthVal(v));
-
-    return () => {
-      unsubNrv();
-      unsubIdn();
-      unsubAgc();
-      unsubMng();
-      unsubFlow();
-      unsubSleep();
-      unsubStim();
-      unsubSocial();
-      unsubEconomic();
-      unsubMovement();
-      unsubSynth();
-    };
+    const displayInterval = setInterval(() => {
+      setDisplayScores({
+        attention: Math.round(100 - nervousSystemLoad.get()),
+        nervous: Math.round(nervousSystemLoad.get()),
+        identity: Math.round(identityCoherence.get()),
+        agency: Math.round(agencyScore.get()),
+        meaning: Math.round(meaningScore.get()),
+        flow: flowProbability.get(),
+        sleep: Math.round(sleepDebt.get()),
+        stim: Math.round(stimulationLevel.get()),
+        social: Math.round(socialPressure.get()),
+        econ: Math.round(economicStress.get()),
+        phys: Math.round(physicalMovement.get()),
+        synth: Math.round(syntheticInteraction.get()),
+      });
+    }, 500);
+    return () => clearInterval(displayInterval);
   }, [
     nervousSystemLoad, identityCoherence, agencyScore, meaningScore, flowProbability,
     sleepDebt, stimulationLevel, socialPressure, economicStress, physicalMovement, syntheticInteraction
   ]);
+
+  const nrvScore = displayScores.nervous;
+  const idnScore = displayScores.identity;
+  const agcScore = displayScores.agency;
+  const mngScore = displayScores.meaning;
+  const flowProbVal = displayScores.flow;
+
+  const sleepDebtVal = displayScores.sleep;
+  const stimulationVal = displayScores.stim;
+  const socialVal = displayScores.social;
+  const economicVal = displayScores.econ;
+  const movementVal = displayScores.phys;
+  const synthVal = displayScores.synth;
 
   const attScore = 100 - nrvScore;
   const nrvWellness = 100 - nrvScore;
@@ -498,13 +562,15 @@ const HudTelemetry = React.memo(({
   }, [totalScore]);
 
   // METRIC 1 — SYSTEM RISK INDEX
-  const riskIndex = (
-    (100 - attScore) * 0.20 +
-    nrvScore * 0.25 +
-    (100 - idnScore) * 0.15 +
-    (100 - agcScore) * 0.20 +
-    (100 - mngScore) * 0.20
-  );
+  const riskIndex = useMemo(() => {
+    return (
+      (100 - attScore) * 0.20 +
+      nrvScore * 0.25 +
+      (100 - idnScore) * 0.15 +
+      (100 - agcScore) * 0.20 +
+      (100 - mngScore) * 0.20
+    );
+  }, [attScore, nrvScore, idnScore, agcScore, mngScore]);
   const riskIndexVal = Math.round(riskIndex);
   const riskIndexColor = riskIndexVal < 30 ? "text-emerald-500" : riskIndexVal > 60 ? "text-red-500 font-bold" : "text-amber-500 font-bold";
   const riskIndexStatus = riskIndex < 20 ? "OPTIMAL CONFIGURATION" : riskIndex <= 40 ? "MANAGEABLE LOAD" : riskIndex <= 65 ? "ELEVATED RISK" : "CRITICAL DEGRADATION";
@@ -746,89 +812,17 @@ const HudTelemetry = React.memo(({
 HudTelemetry.displayName = 'HudTelemetry';
 
 interface CognitiveWeatherProps {
-  attention: MotionValue<number>;
-  nervousLoad: MotionValue<number>;
-  identity: MotionValue<number>;
-  agency: MotionValue<number>;
-  meaning: MotionValue<number>;
+  weather: 'clear' | 'cloudy' | 'rainy' | 'storm' | 'void' | 'flow';
   flowProbability: MotionValue<number>;
 }
 
 const CognitiveWeather = React.memo(({
-  attention,
-  nervousLoad,
-  identity,
-  agency,
-  meaning,
+  weather,
   flowProbability
 }: CognitiveWeatherProps) => {
-  const [weather, setWeather] = useState<'clear' | 'overcast' | 'storm' | 'void' | 'flow'>('clear');
-  const [flowProbVal, setFlowProbVal] = useState(flowProbability.get());
+  const strokeDashoffset = useTransform(flowProbability, (val) => 552.92 * (1 - val));
 
-  useEffect(() => {
-    const evaluate = () => {
-      const att = attention.get();
-      const nrv = nervousLoad.get();
-      const agc = agency.get();
-      const mng = meaning.get();
-      const fp = flowProbability.get();
-
-      // FLOW: flowProbability > 0.6
-      if (fp > 0.6) {
-        return 'flow';
-      }
-
-      // VOID: meaning < 20 AND agency < 30
-      if (mng < 20 && agc < 30) {
-        return 'void';
-      }
-
-      // STORM: nervousLoad > 70 OR attention < 40 OR agency < 30
-      if (nrv > 70 || att < 40 || agc < 30) {
-        return 'storm';
-      }
-
-      // OVERCAST: nervousLoad 30-70 OR (attention 40-70) OR (meaning 30-60)
-      if ((nrv >= 30 && nrv <= 70) || (att >= 40 && att <= 70) || (mng >= 30 && mng <= 60)) {
-        return 'overcast';
-      }
-
-      // CLEAR: nervousLoad < 30 AND attention > 70 AND meaning > 60
-      if (nrv < 30 && att > 70 && mng > 60) {
-        return 'clear';
-      }
-
-      return 'overcast';
-    };
-
-    const updateWeather = () => {
-      setFlowProbVal(flowProbability.get());
-      const nextWeather = evaluate();
-      setWeather(prev => {
-        if (prev !== nextWeather) return nextWeather;
-        return prev;
-      });
-    };
-
-    const unsubAtt = attention.on('change', updateWeather);
-    const unsubNrv = nervousLoad.on('change', updateWeather);
-    const unsubIdn = identity.on('change', updateWeather);
-    const unsubAgc = agency.on('change', updateWeather);
-    const unsubMng = meaning.on('change', updateWeather);
-    const unsubFlow = flowProbability.on('change', updateWeather);
-
-    updateWeather();
-
-    return () => {
-      unsubAtt();
-      unsubNrv();
-      unsubIdn();
-      unsubAgc();
-      unsubMng();
-      unsubFlow();
-    };
-  }, [attention, nervousLoad, identity, agency, meaning, flowProbability]);
-
+  // SVG circles data matching weather state
   const config = {
     clear: {
       color: '#6B8FE8',
@@ -839,11 +833,20 @@ const CognitiveWeather = React.memo(({
       scale: [0.95, 1.05, 0.95],
       jitter: false,
     },
-    overcast: {
+    cloudy: {
+      color: '#71717a',
+      opacity: [[0.40, 0.40], [0.52, 0.52], [0.65, 0.65]],
+      radii: [32, 55, 78],
+      duration: 2.5,
+      ease: "easeInOut",
+      scale: [0.96, 1.04, 0.96],
+      jitter: false,
+    },
+    rainy: {
       color: '#EF9F27',
       opacity: [[0.55, 0.55], [0.68, 0.68], [0.80, 0.80]],
-      radii: [22, 40, 58], // compressed radii
-      duration: 1.5, // double pulse frequency
+      radii: [22, 40, 58],
+      duration: 1.5,
       ease: "easeInOut",
       scale: [0.95, 1.05, 0.95],
       jitter: false,
@@ -852,7 +855,7 @@ const CognitiveWeather = React.memo(({
       color: '#E24B4A',
       opacity: [[0.75, 0.75], [0.85, 0.85], [0.90, 0.90]],
       radii: [30, 55, 80],
-      duration: 0.3, // oscillates rapidly
+      duration: 0.3,
       ease: "linear",
       scale: [0.9, 1.1, 0.9],
       jitter: true,
@@ -1009,34 +1012,22 @@ const CognitiveWeather = React.memo(({
             strokeLinecap="round"
             transform="rotate(-90 100 100)"
             style={{
-              transformOrigin: "100px 100px"
+              transformOrigin: "100px 100px",
+              strokeDashoffset
             }}
             animate={{
               strokeDasharray: 552.92,
-              strokeDashoffset: 552.92 * (1 - flowProbVal),
               opacity: weather === 'flow' ? 0.8 : 0
             }}
             transition={{
-              opacity: { duration: 0.5 },
-              strokeDashoffset: { duration: 0.3, ease: "easeOut" }
+              opacity: { duration: 0.5 }
             }}
           />
         </svg>
       </div>
 
-      <span className={`text-[10px] font-mono font-bold tracking-widest mt-2 uppercase transition-colors duration-500 ${
-        weather === 'clear' ? 'text-indigo-400' :
-        weather === 'overcast' ? 'text-amber-500/80' :
-        weather === 'storm' ? 'text-rose-500 animate-pulse' :
-        weather === 'void' ? 'text-rose-950 font-bold animate-pulse' :
-        weather === 'flow' ? 'text-[#F5C842] font-bold' :
-        'text-zinc-600'
-      }`}>
-        {weather === 'clear' && "COGNITIVE CLARITY"}
-        {weather === 'overcast' && "ELEVATED LOAD"}
-        {weather === 'storm' && "COGNITIVE STORM"}
-        {weather === 'void' && "DISSOCIATIVE STATE"}
-        {weather === 'flow' && "FLOW STATE ACTIVE"}
+      <span className={`text-[10px] font-mono font-bold tracking-widest mt-2 uppercase transition-colors duration-500 ${WEATHER_MAPPING[weather].colorClass}`}>
+        {WEATHER_MAPPING[weather].label}
       </span>
     </div>
   );
@@ -1291,14 +1282,15 @@ const HeaderStatus = React.memo(({
   const statusTextRef = useRef<HTMLSpanElement>(null);
   const statusIndicatorRef = useRef<HTMLDivElement>(null);
   
-  const [nrvVal, setNrvVal] = useState(nervousSystemLoad.get());
-  const [idnVal, setIdnVal] = useState(identityCoherence.get());
-  const [agcVal, setAgcVal] = useState(agencyScore.get());
-  const [mngVal, setMngVal] = useState(meaningScore.get());
+  const [displayScores, setDisplayScores] = useState({
+    nervous: nervousSystemLoad.get(),
+    identity: identityCoherence.get(),
+    agency: agencyScore.get(),
+    meaning: meaningScore.get(),
+  });
 
   useEffect(() => {
-    const unsubNrv = nervousSystemLoad.on("change", (v) => {
-      setNrvVal(v);
+    const updateHeaderStatusText = (v: number) => {
       const textEl = statusTextRef.current;
       const indicatorEl = statusIndicatorRef.current;
       if (!textEl || !indicatorEl) return;
@@ -1316,18 +1308,29 @@ const HeaderStatus = React.memo(({
         textEl.className = 'font-bold text-emerald-500';
         indicatorEl.className = 'p-1.5 rounded-full border bg-indigo-500/10 border-indigo-500/30 text-indigo-400';
       }
-    });
-    const unsubIdn = identityCoherence.on("change", (v) => setIdnVal(v));
-    const unsubAgc = agencyScore.on("change", (v) => setAgcVal(v));
-    const unsubMng = meaningScore.on("change", (v) => setMngVal(v));
-
-    return () => {
-      unsubNrv();
-      unsubIdn();
-      unsubAgc();
-      unsubMng();
     };
+
+    // Initial call
+    updateHeaderStatusText(nervousSystemLoad.get());
+
+    const displayInterval = setInterval(() => {
+      const nrv = nervousSystemLoad.get();
+      setDisplayScores({
+        nervous: nrv,
+        identity: identityCoherence.get(),
+        agency: agencyScore.get(),
+        meaning: meaningScore.get(),
+      });
+      updateHeaderStatusText(nrv);
+    }, 500);
+
+    return () => clearInterval(displayInterval);
   }, [nervousSystemLoad, identityCoherence, agencyScore, meaningScore]);
+
+  const nrvVal = displayScores.nervous;
+  const idnVal = displayScores.identity;
+  const agcVal = displayScores.agency;
+  const mngVal = displayScores.meaning;
 
   const getScoreColorClass = (score: number) => {
     if (score < 30) return 'text-red-500 font-bold animate-pulse';
@@ -1540,8 +1543,12 @@ export default function CognitiveSimulator() {
   const [transitionProtocolActive, setTransitionProtocolActive] = useState<boolean>(false);
   const [transitionTargetArchetypeId, setTransitionTargetArchetypeId] = useState<string | null>(null);
 
+  const nearestArchetypeDeps = useMemo(() => [
+    stimulationLevel, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction
+  ], [stimulationLevel, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction]);
+
   const nearestArchetype = useTransform(
-    [stimulationLevel, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction],
+    nearestArchetypeDeps,
     (values) => {
       const [stim, sleep, social, econ, phys, synth] = values as number[];
       
@@ -1587,8 +1594,12 @@ export default function CognitiveSimulator() {
 
   const attentionScore = useTransform(nervousSystemLoad, (load) => 100 - load);
 
+  const flowProbabilityDeps = useMemo(() => [
+    attentionScore, agencyScore, nervousSystemLoad, meaningScore, socialPressure
+  ], [attentionScore, agencyScore, nervousSystemLoad, meaningScore, socialPressure]);
+
   const flowProbability = useTransform(
-    [attentionScore, agencyScore, nervousSystemLoad, meaningScore, socialPressure],
+    flowProbabilityDeps,
     (values) => {
       const [att, agency, load, meaning, social] = values as number[];
 
@@ -1631,6 +1642,52 @@ export default function CognitiveSimulator() {
       }
 
       return baseProb;
+    }
+  );
+
+  const agencyTargetDeps = useMemo(() => [
+    physicalMovement, economicStress, sleepDebt, nervousSystemLoad, meaningScore
+  ], [physicalMovement, economicStress, sleepDebt, nervousSystemLoad, meaningScore]);
+
+  const agencyTarget = useTransform(
+    agencyTargetDeps,
+    (values) => {
+      const [phys, econ, sleep, currentLoad, currentMeaning] = values as number[];
+      let targetVal = Math.max(0, Math.min(100,
+        25
+        + (phys * 0.55)
+        - (econ * 0.25)
+        - (sleep * 0.20)
+        - (currentLoad * 0.08)
+        + (currentMeaning * 0.12)
+      ));
+      if (activeArchetypeRef.current === "Creative Solitude") {
+        targetVal = Math.max(targetVal, 75);
+      }
+      return targetVal;
+    }
+  );
+
+  const meaningTargetDeps = useMemo(() => [
+    physicalMovement, stimulationLevel, syntheticInteraction, economicStress, sleepDebt
+  ], [physicalMovement, stimulationLevel, syntheticInteraction, economicStress, sleepDebt]);
+
+  const meaningTarget = useTransform(
+    meaningTargetDeps,
+    (values) => {
+      const [phys, stim, synth, econ, sleep] = values as number[];
+      let targetVal = Math.max(0, Math.min(100,
+        15
+        + (phys * 0.40)
+        - (stim * 0.25)
+        + (100 - synth) * 0.15
+        - (econ * 0.15)
+        - (sleep * 0.10)
+      ));
+      if (activeArchetypeRef.current === "Creative Solitude") {
+        targetVal = Math.max(targetVal, 80);
+      }
+      return targetVal;
     }
   );
 
@@ -1854,58 +1911,62 @@ export default function CognitiveSimulator() {
   }, isRebooting, tickInterval, handleEventTriggered);
 
   // Quadrant matrix state that only re-renders the headers when boundaries are crossed
-  const [quadrant, setQuadrant] = useState({
-    key: "calm",
-    title: "Synaptic Harmony",
-    subtitle: "The mind rests in calibrated precision. Neuronal pathways fire in perfect, quiet consensus."
-  });
+  const [weather, setWeather] = useState<'clear' | 'cloudy' | 'rainy' | 'storm' | 'void' | 'flow'>('clear');
 
   useEffect(() => {
-    const updateQuadrant = () => {
-      const load = nervousSystemLoad.get();
-      const coherence = identityCoherence.get();
-      let key = "calm";
-      let title = "";
-      let subtitle = "";
+    const updateWeather = () => {
+      const att = 100 - nervousSystemLoad.get();
+      const nrv = nervousSystemLoad.get();
+      const agc = agencyScore.get();
+      const mng = meaningScore.get();
+      const fp = flowProbability.get();
 
-      if (load < 50) {
-        if (coherence > 50) {
-          key = "calm";
-          title = "Synaptic Harmony";
-          subtitle = "The mind rests in calibrated precision. Neuronal pathways fire in perfect, quiet consensus.";
-        } else {
-          key = "drifting";
-          title = "Dissociative Void";
-          subtitle = "The signals are silent, yet we are no longer here. The anchor has slipped, and we drift through grey space.";
-        }
-      } else {
-        if (coherence > 50) {
-          key = "frantic";
-          title = "Hyper-Stimulated Coexistence";
-          subtitle = "The synapses are flooded, yet the boundaries hold. We are racing to keep the shape from splintering.";
-        } else {
-          key = "collapse";
-          title = "Complete Dissolution";
-          subtitle = "Total collapse achieved. The syntax of existence fractures into white noise. There is nothing left to retrieve.";
-        }
+      let nextWeather: 'clear' | 'cloudy' | 'rainy' | 'storm' | 'void' | 'flow' = 'clear';
+
+      // FLOW: flowProbability > 0.6
+      if (fp > 0.6) {
+        nextWeather = 'flow';
+      }
+      // VOID: meaning < 20 AND agency < 30
+      else if (mng < 20 && agc < 30) {
+        nextWeather = 'void';
+      }
+      // STORM: nervousLoad > 70 OR attention < 40 OR agency < 30
+      else if (nrv > 70 || att < 40 || agc < 30) {
+        nextWeather = 'storm';
+      }
+      // OVERCAST / CLOUDY / RAINY
+      else if ((nrv >= 30 && nrv <= 70) || (att >= 40 && att <= 70) || (mng >= 30 && mng <= 60)) {
+        nextWeather = nrv < 45 ? 'cloudy' : 'rainy';
+      }
+      // CLEAR
+      else if (nrv < 30 && att > 70 && mng > 60) {
+        nextWeather = 'clear';
+      }
+      else {
+        nextWeather = nrv < 45 ? 'cloudy' : 'rainy';
       }
 
-      setQuadrant((prev) => {
-        if (prev.key === key) return prev;
-        return { key, title, subtitle };
+      setWeather((prev) => {
+        if (prev === nextWeather) return prev;
+        return nextWeather;
       });
     };
 
-    const unsub1 = nervousSystemLoad.on("change", updateQuadrant);
-    const unsub2 = identityCoherence.on("change", updateQuadrant);
-    
-    updateQuadrant();
+    const unsubNrv = nervousSystemLoad.on("change", updateWeather);
+    const unsubAgc = agencyScore.on("change", updateWeather);
+    const unsubMng = meaningScore.on("change", updateWeather);
+    const unsubFlow = flowProbability.on("change", updateWeather);
+
+    updateWeather();
 
     return () => {
-      unsub1();
-      unsub2();
+      unsubNrv();
+      unsubAgc();
+      unsubMng();
+      unsubFlow();
     };
-  }, [nervousSystemLoad, identityCoherence]);
+  }, [nervousSystemLoad, agencyScore, meaningScore, flowProbability]);
 
   // Refs for element selections and pointer tracking
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1926,8 +1987,6 @@ export default function CognitiveSimulator() {
       const stim = stimulationLevel.get();
       const sleep = sleepDebt.get();
       const synth = syntheticInteraction.get();
-      const econ = economicStress.get();
-      const phys = physicalMovement.get();
 
       const targetLoad = Math.min(100, stim * (1 + (sleep / 100 * 0.8)));
       const targetCoherence = Math.max(0, 100 - synth);
@@ -1935,28 +1994,8 @@ export default function CognitiveSimulator() {
       const currentLoad = nervousSystemLoad.get();
 
       const currentMeaning = meaningScore.get();
-      let targetAgency = Math.max(0, Math.min(100,
-        25
-        + (phys * 0.55)
-        - (econ * 0.25)
-        - (sleep * 0.20)
-        - (currentLoad * 0.08)
-        + (currentMeaning * 0.12)
-      ));
-
-      let targetMeaning = Math.max(0, Math.min(100,
-        15
-        + (phys * 0.40)
-        - (stim * 0.25)
-        + (100 - synth) * 0.15
-        - (econ * 0.15)
-        - (sleep * 0.10)
-      ));
-
-      if (activeArchetypeRef.current === "Creative Solitude") {
-        targetAgency = Math.max(targetAgency, 75);
-        targetMeaning = Math.max(targetMeaning, 80);
-      }
+      const targetAgency = agencyTarget.get();
+      const targetMeaning = meaningTarget.get();
 
       const driftStep = 1 * driftStepMultiplier;
       if (currentLoad < targetLoad) {
@@ -2037,9 +2076,8 @@ export default function CognitiveSimulator() {
 
             setLogs(prev => {
               const nextId = prev.length + 1;
-              const updated = [...prev, { id: nextId, text: "[CRIT] Flow Window Exhausted", type: "crit" }];
-              if (updated.length > 8) updated.shift();
-              return updated;
+              const newEntry = { id: nextId, text: "[CRIT] Flow Window Exhausted", type: "crit" };
+              return [...prev, newEntry].slice(-50);
             });
             setSessionEventsHistory(prev => [...prev, { name: "Flow Window Exhausted", category: "destabilizer" }]);
 
@@ -2099,6 +2137,22 @@ export default function CognitiveSimulator() {
     synthRef.current = new NeuralSynth();
     return () => {
       synthRef.current?.stop();
+    };
+  }, []);
+
+  // Suspend AudioContext on hidden tab
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!synthRef.current) return;
+      if (document.hidden) {
+        synthRef.current.suspend();
+      } else {
+        synthRef.current.resume();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 
@@ -2182,9 +2236,7 @@ export default function CognitiveSimulator() {
         }
 
         const newLog = { id: nextId, text: newLogText, type: newLogType };
-        const updated = [...prevLogs, newLog];
-        if (updated.length > 8) updated.shift();
-        return updated;
+        return [...prevLogs, newLog].slice(-50);
       });
 
       // Frequency scales dynamically with load
@@ -2665,7 +2717,7 @@ export default function CognitiveSimulator() {
           <div className="w-full text-center mb-4 select-none">
             <AnimatePresence mode="wait">
               <motion.div
-                key={quadrant.key}
+                key={weather}
                 initial={{ opacity: 0, filter: "blur(10px)" }}
                 animate={{ opacity: 1, filter: "blur(0px)" }}
                 exit={{ opacity: 0, filter: "blur(10px)" }}
@@ -2673,10 +2725,10 @@ export default function CognitiveSimulator() {
                 className="space-y-2 border-b border-zinc-900/40 pb-3"
               >
                 <h1 className="font-display text-sm tracking-wider text-zinc-100 uppercase font-extrabold text-center">
-                  {quadrant.title}
+                  {WEATHER_MAPPING[weather].title}
                 </h1>
                 <p className="font-mono text-[9px] text-zinc-500 leading-normal uppercase tracking-wide text-center">
-                  {quadrant.subtitle}
+                  {WEATHER_MAPPING[weather].subtitle}
                 </p>
               </motion.div>
             </AnimatePresence>
@@ -2685,11 +2737,7 @@ export default function CognitiveSimulator() {
           {/* Cognitive Weather visualizer (centered, minimum height 280px) */}
           <div className="w-full flex-1 flex items-center justify-center relative min-h-[280px]">
             <CognitiveWeather 
-              attention={attentionScore}
-              nervousLoad={nervousSystemLoad}
-              identity={identityCoherence}
-              agency={agencyScore}
-              meaning={meaningScore}
+              weather={weather}
               flowProbability={flowProbability}
             />
           </div>

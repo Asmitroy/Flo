@@ -13,6 +13,106 @@ interface ArchetypeSelectorProps {
   onArchetypeSelect?: (name: string) => void;
 }
 
+interface ArchetypeCardProps {
+  archetype: Archetype;
+  isSelected: boolean;
+  isLoading: boolean;
+  progress: number;
+  flowProb: number;
+  onClick: () => void;
+  getProgressBar: (prog: number) => string;
+}
+
+const ArchetypeCard = React.memo(({
+  archetype,
+  isSelected,
+  isLoading,
+  progress,
+  flowProb,
+  onClick,
+  getProgressBar
+}: ArchetypeCardProps) => {
+  return (
+    <div
+      onClick={onClick}
+      className={`group flex flex-col justify-between border rounded p-3 h-[105px] cursor-pointer transition-all duration-300 relative overflow-hidden select-none ${
+        isSelected
+          ? "border-zinc-500 bg-zinc-900/10 shadow-[0_0_12px_rgba(255,255,255,0.02)]"
+          : "border-zinc-900/80 bg-zinc-950/20 hover:border-zinc-800/80 hover:-translate-y-0.5"
+      }`}
+    >
+      {/* Background scanning effect when loading */}
+      {isLoading && (
+        <div className="absolute inset-0 bg-gradient-to-t from-zinc-500/5 to-transparent pointer-events-none animate-pulse" />
+      )}
+
+      {/* Title & Blinky status indicator */}
+      <div className="flex items-start justify-between w-full">
+        <span className={`text-[9px] font-bold tracking-wider uppercase font-mono transition-colors ${
+          isSelected ? "text-zinc-200" : "text-zinc-400 group-hover:text-zinc-300"
+        }`}>
+          {archetype.name}
+        </span>
+        
+        <div className="flex items-center">
+          {isSelected && (
+            <span className="flex h-1.5 w-1.5 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-zinc-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-zinc-400"></span>
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Progress Terminal readout or normal summary & bar chart */}
+      {isLoading ? (
+        <div className="font-mono text-[8px] text-zinc-400 space-y-1 mt-auto z-10">
+          <div className="text-zinc-500 animate-pulse">&gt; loading subject profile...</div>
+          <div className="flex items-center space-x-1.5 text-[8px] text-zinc-355 font-mono">
+            <span>[{getProgressBar(progress)}]</span>
+            <span>{Math.round(progress)}%</span>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col justify-end h-full mt-1.5">
+          <span className="text-[8.5px] text-zinc-500 line-clamp-1 leading-normal tracking-wide font-mono">
+            {archetype.summary}
+          </span>
+          
+          {/* Sparkline chart of the 6 values */}
+          <div className="flex items-end gap-1 h-3 mt-1.5">
+            {Object.entries(archetype.targets).map(([key, val]) => (
+              <div key={key} className="flex-1 flex flex-col items-center group/bar relative h-full justify-end">
+                <div
+                  style={{ height: `${val}%` }}
+                  className={`w-full rounded-t-[1px] transition-all duration-300 ${
+                    isSelected
+                      ? "bg-zinc-300"
+                      : "bg-zinc-800/60 group-hover:bg-zinc-650"
+                  }`}
+                />
+                {/* Custom compact tooltip on hover */}
+                <div className="absolute bottom-full mb-1 scale-0 group-hover/bar:scale-100 transition-all font-mono text-[7px] bg-zinc-950 border border-zinc-850 text-zinc-400 px-1 py-0.5 rounded pointer-events-none whitespace-nowrap z-25 shadow-md">
+                  {key}: {val}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Flow Probability small text label */}
+          <div className="flex items-center justify-between text-[7px] text-zinc-500/80 mt-1.5 tracking-wider font-mono">
+            <span>FLOW PROBABILITY</span>
+            <span className={flowProb > 60 ? "text-[#F5C842] font-bold" : "text-zinc-500"}>
+              {flowProb}%
+            </span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+ArchetypeCard.displayName = 'ArchetypeCard';
+
 export const ArchetypeSelector = React.memo(({
   stimulationLevel,
   sleepDebt,
@@ -145,83 +245,16 @@ export const ArchetypeSelector = React.memo(({
     const flowProb = calcFlowProbability(a.targets, a.name);
 
     return (
-      <div
+      <ArchetypeCard
         key={a.id}
+        archetype={a}
+        isSelected={isSelected}
+        isLoading={isLoading}
+        progress={progress}
+        flowProb={flowProb}
         onClick={() => handleSelect(a.id)}
-        className={`group flex flex-col justify-between border rounded p-3 h-[105px] cursor-pointer transition-all duration-300 relative overflow-hidden select-none ${
-          isSelected
-            ? "border-zinc-500 bg-zinc-900/10 shadow-[0_0_12px_rgba(255,255,255,0.02)]"
-            : "border-zinc-900/80 bg-zinc-950/20 hover:border-zinc-800/80 hover:-translate-y-0.5"
-        }`}
-      >
-        {/* Background scanning effect when loading */}
-        {isLoading && (
-          <div className="absolute inset-0 bg-gradient-to-t from-zinc-500/5 to-transparent pointer-events-none animate-pulse" />
-        )}
-
-        {/* Title & Blinky status indicator */}
-        <div className="flex items-start justify-between w-full">
-          <span className={`text-[9px] font-bold tracking-wider uppercase font-mono transition-colors ${
-            isSelected ? "text-zinc-200" : "text-zinc-400 group-hover:text-zinc-300"
-          }`}>
-            {a.name}
-          </span>
-          
-          <div className="flex items-center">
-            {isSelected && (
-              <span className="flex h-1.5 w-1.5 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-zinc-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-zinc-400"></span>
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Progress Terminal readout or normal summary & bar chart */}
-        {isLoading ? (
-          <div className="font-mono text-[8px] text-zinc-400 space-y-1 mt-auto z-10">
-            <div className="text-zinc-500 animate-pulse">&gt; loading subject profile...</div>
-            <div className="flex items-center space-x-1.5 text-[8px] text-zinc-350 font-mono">
-              <span>[{getProgressBar(progress)}]</span>
-              <span>{Math.round(progress)}%</span>
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col justify-end h-full mt-1.5">
-            <span className="text-[8.5px] text-zinc-500 line-clamp-1 leading-normal tracking-wide font-mono">
-              {a.summary}
-            </span>
-            
-            {/* Sparkline chart of the 6 values */}
-            <div className="flex items-end gap-1 h-3 mt-1.5">
-              {Object.entries(a.targets).map(([key, val]) => (
-                <div key={key} className="flex-1 flex flex-col items-center group/bar relative h-full justify-end">
-                  <div
-                    style={{ height: `${val}%` }}
-                    className={`w-full rounded-t-[1px] transition-all duration-300 ${
-                      isSelected
-                        ? "bg-zinc-300"
-                        : "bg-zinc-800/60 group-hover:bg-zinc-650"
-                    }`}
-                  />
-                  {/* Custom compact tooltip on hover */}
-                  <div className="absolute bottom-full mb-1 scale-0 group-hover/bar:scale-100 transition-all font-mono text-[7px] bg-zinc-950 border border-zinc-850 text-zinc-400 px-1 py-0.5 rounded pointer-events-none whitespace-nowrap z-25 shadow-md">
-                    {key}: {val}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Flow Probability small text label */}
-            <div className="flex items-center justify-between text-[7px] text-zinc-500/80 mt-1.5 tracking-wider font-mono">
-              <span>FLOW PROBABILITY</span>
-              <span className={flowProb > 60 ? "text-[#F5C842] font-bold" : "text-zinc-500"}>
-                {flowProb}%
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
+        getProgressBar={getProgressBar}
+      />
     );
   };
 
