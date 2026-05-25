@@ -12,7 +12,9 @@ import {
   Terminal,
   Moon,
   TrendingDown,
-  Users
+  Users,
+  Leaf,
+  Compass
 } from 'lucide-react';
 // import AttentionGraph from './AttentionGraph';
 // import IdentityCore from './IdentityCore';
@@ -474,6 +476,8 @@ interface HudTelemetryProps {
   economicStress: MotionValue<number>;
   physicalMovement: MotionValue<number>;
   syntheticInteraction: MotionValue<number>;
+  natureExposure: MotionValue<number>;
+  purposeClarity: MotionValue<number>;
 }
 
 const HudTelemetry = React.memo(({ 
@@ -1519,6 +1523,8 @@ export default function CognitiveSimulator() {
   const socialPressure = useMotionValue<number>(20);
   const agencyScore = useMotionValue<number>(65);
   const meaningScore = useMotionValue<number>(75);
+  const natureExposure = useMotionValue<number>(20);
+  const purposeClarity = useMotionValue<number>(40);
 
   // States and refs needed by transforms declared early to avoid Temporal Dead Zone (TDZ)
   const [activeArchetype, setActiveArchetype] = useState<string | null>(null);
@@ -1544,13 +1550,13 @@ export default function CognitiveSimulator() {
   const [transitionTargetArchetypeId, setTransitionTargetArchetypeId] = useState<string | null>(null);
 
   const nearestArchetypeDeps = useMemo(() => [
-    stimulationLevel, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction
-  ], [stimulationLevel, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction]);
+    stimulationLevel, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction, natureExposure, purposeClarity
+  ], [stimulationLevel, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction, natureExposure, purposeClarity]);
 
   const nearestArchetype = useTransform(
     nearestArchetypeDeps,
     (values) => {
-      const [stim, sleep, social, econ, phys, synth] = values as number[];
+      const [stim, sleep, social, econ, phys, synth, nature, purpose] = values as number[];
       
       const sliders = {
         stimulation: stim,
@@ -1559,6 +1565,8 @@ export default function CognitiveSimulator() {
         economic: econ,
         movement: phys,
         synthetic: synth,
+        natureExposure: nature,
+        purposeClarity: purpose,
       };
 
       return ARCHETYPES.reduce((nearest, arch) => {
@@ -1568,7 +1576,9 @@ export default function CognitiveSimulator() {
           Math.pow(sliders.social - arch.targets.socialPressure, 2) +
           Math.pow(sliders.economic - arch.targets.economicStress, 2) +
           Math.pow(sliders.movement - arch.targets.physicalMovement, 2) +
-          Math.pow(sliders.synthetic - arch.targets.syntheticInteraction, 2)
+          Math.pow(sliders.synthetic - arch.targets.syntheticInteraction, 2) +
+          Math.pow(sliders.natureExposure - arch.targets.natureExposure, 2) +
+          Math.pow(sliders.purposeClarity - arch.targets.purposeClarity, 2)
         );
         return dist < nearest.dist ? { name: arch.name, dist } : nearest;
       }, { name: '', dist: Infinity }).name;
@@ -1595,13 +1605,13 @@ export default function CognitiveSimulator() {
   const attentionScore = useTransform(nervousSystemLoad, (load) => 100 - load);
 
   const flowProbabilityDeps = useMemo(() => [
-    attentionScore, agencyScore, nervousSystemLoad, meaningScore, socialPressure
-  ], [attentionScore, agencyScore, nervousSystemLoad, meaningScore, socialPressure]);
+    attentionScore, agencyScore, nervousSystemLoad, meaningScore, socialPressure, purposeClarity
+  ], [attentionScore, agencyScore, nervousSystemLoad, meaningScore, socialPressure, purposeClarity]);
 
   const flowProbability = useTransform(
     flowProbabilityDeps,
     (values) => {
-      const [att, agency, load, meaning, social] = values as number[];
+      const [att, agency, load, meaning, social, purpose] = values as number[];
 
       // Locked 0 if Deep Flow is active and exhausted
       if (activeArchetypeRef.current === "Deep Flow" && sustainabilityExhaustedRef.current) {
@@ -1614,7 +1624,8 @@ export default function CognitiveSimulator() {
         load >= 15 &&
         load <= 65 &&
         meaning > 60 &&
-        social < 40
+        social < 40 &&
+        purpose > 55
       );
 
       if (!inFlowChannel) return 0;
@@ -1646,13 +1657,13 @@ export default function CognitiveSimulator() {
   );
 
   const agencyTargetDeps = useMemo(() => [
-    physicalMovement, economicStress, sleepDebt, nervousSystemLoad, meaningScore
-  ], [physicalMovement, economicStress, sleepDebt, nervousSystemLoad, meaningScore]);
+    physicalMovement, economicStress, sleepDebt, nervousSystemLoad, meaningScore, purposeClarity
+  ], [physicalMovement, economicStress, sleepDebt, nervousSystemLoad, meaningScore, purposeClarity]);
 
   const agencyTarget = useTransform(
     agencyTargetDeps,
     (values) => {
-      const [phys, econ, sleep, currentLoad, currentMeaning] = values as number[];
+      const [phys, econ, sleep, currentLoad, currentMeaning, purpose] = values as number[];
       let targetVal = Math.max(0, Math.min(100,
         25
         + (phys * 0.55)
@@ -1660,6 +1671,7 @@ export default function CognitiveSimulator() {
         - (sleep * 0.20)
         - (currentLoad * 0.08)
         + (currentMeaning * 0.12)
+        + (purpose * 0.15)
       ));
       if (activeArchetypeRef.current === "Creative Solitude") {
         targetVal = Math.max(targetVal, 75);
@@ -1669,13 +1681,13 @@ export default function CognitiveSimulator() {
   );
 
   const meaningTargetDeps = useMemo(() => [
-    physicalMovement, stimulationLevel, syntheticInteraction, economicStress, sleepDebt
-  ], [physicalMovement, stimulationLevel, syntheticInteraction, economicStress, sleepDebt]);
+    physicalMovement, stimulationLevel, syntheticInteraction, economicStress, sleepDebt, natureExposure
+  ], [physicalMovement, stimulationLevel, syntheticInteraction, economicStress, sleepDebt, natureExposure]);
 
   const meaningTarget = useTransform(
     meaningTargetDeps,
     (values) => {
-      const [phys, stim, synth, econ, sleep] = values as number[];
+      const [phys, stim, synth, econ, sleep, nature] = values as number[];
       let targetVal = Math.max(0, Math.min(100,
         15
         + (phys * 0.40)
@@ -1683,6 +1695,7 @@ export default function CognitiveSimulator() {
         + (100 - synth) * 0.15
         - (econ * 0.15)
         - (sleep * 0.10)
+        + (nature * 0.12)
       ));
       if (activeArchetypeRef.current === "Creative Solitude") {
         targetVal = Math.max(targetVal, 80);
@@ -1705,6 +1718,7 @@ export default function CognitiveSimulator() {
   // Reflection Modal state
   const [sessionDuration, setSessionDuration] = useState<number>(0);
   const [showReflection, setShowReflection] = useState<boolean>(false);
+  const scoreHistory = useRef<{ t: number; scores: SystemScores; sliders: SliderSnapshot }[]>([]);
 
   useEffect(() => {
     if (activeArchetype !== "Deep Flow") {
@@ -1759,7 +1773,7 @@ export default function CognitiveSimulator() {
     if (!arch) return null;
 
     const t = arch.targets;
-    const targetLoad = Math.min(100, t.stimulation * (1 + (t.sleepDebt / 100 * 0.8)));
+    const targetLoad = Math.min(100, t.stimulation * (1 + (t.sleepDebt / 100 * 0.8))) * (1 - t.natureExposure / 100 * 0.15);
     const targetCoherence = Math.max(0, 100 - t.syntheticInteraction);
 
     const previewMeaning = Math.max(0, Math.min(100,
@@ -1769,6 +1783,7 @@ export default function CognitiveSimulator() {
       + (100 - t.syntheticInteraction) * 0.15
       - (t.economicStress * 0.15)
       - (t.sleepDebt * 0.10)
+      + (t.natureExposure * 0.12)
     ));
     let targetAgency = Math.max(0, Math.min(100,
       25
@@ -1777,6 +1792,7 @@ export default function CognitiveSimulator() {
       - (t.sleepDebt * 0.20)
       - (targetLoad * 0.08)
       + (previewMeaning * 0.12)
+      + (t.purposeClarity * 0.15)
     ));
 
     let targetMeaning = Math.max(0, Math.min(100,
@@ -1786,6 +1802,7 @@ export default function CognitiveSimulator() {
       + (100 - t.syntheticInteraction) * 0.15
       - (t.economicStress * 0.15)
       - (t.sleepDebt * 0.10)
+      + (t.natureExposure * 0.12)
     ));
 
     if (arch.name === "Creative Solitude") {
@@ -1863,7 +1880,10 @@ export default function CognitiveSimulator() {
     socialPressure: socialPressure.get(),
     economicStress: economicStress.get(),
     physicalMovement: physicalMovement.get(),
-  }), [sleepDebt, stimulationLevel, socialPressure, economicStress, physicalMovement]);
+    syntheticInteraction: syntheticInteraction.get(),
+    natureExposure: natureExposure.get(),
+    purposeClarity: purposeClarity.get(),
+  }), [sleepDebt, stimulationLevel, socialPressure, economicStress, physicalMovement, syntheticInteraction, natureExposure, purposeClarity]);
 
   const {
     isCompressionActive,
@@ -1987,8 +2007,11 @@ export default function CognitiveSimulator() {
       const stim = stimulationLevel.get();
       const sleep = sleepDebt.get();
       const synth = syntheticInteraction.get();
+      const nature = natureExposure.get();
+      const purpose = purposeClarity.get();
 
-      const targetLoad = Math.min(100, stim * (1 + (sleep / 100 * 0.8)));
+      const rawTargetLoad = Math.min(100, stim * (1 + (sleep / 100 * 0.8)));
+      const targetLoad = rawTargetLoad * (1 - nature / 100 * 0.15);
       const targetCoherence = Math.max(0, 100 - synth);
 
       const currentLoad = nervousSystemLoad.get();
@@ -1999,7 +2022,9 @@ export default function CognitiveSimulator() {
 
       const driftStep = 1 * driftStepMultiplier;
       if (currentLoad < targetLoad) {
-        nervousSystemLoad.set(Math.min(targetLoad, currentLoad + driftStep));
+        // Attention degradation rate is reduced by purposeClarity
+        const degradationReduction = 1 - (purpose / 100 * 0.3);
+        nervousSystemLoad.set(Math.min(targetLoad, currentLoad + driftStep * degradationReduction));
       } else if (currentLoad > targetLoad) {
         nervousSystemLoad.set(Math.max(targetLoad, currentLoad - driftStep));
       }
@@ -2117,6 +2142,8 @@ export default function CognitiveSimulator() {
     socialPressure,
     agencyScore,
     meaningScore,
+    natureExposure,
+    purposeClarity,
     tickInterval,
     driftStepMultiplier
   ]);
@@ -2368,11 +2395,44 @@ export default function CognitiveSimulator() {
   // Session duration counter — increments every second while simulation is live
   useEffect(() => {
     if (!isReady || isRebooting) return;
+    let ticks = 0;
     const timer = setInterval(() => {
       setSessionDuration(prev => prev + 1);
+      
+      ticks++;
+      if (ticks >= 2) {
+        ticks = 0;
+        scoreHistory.current.push({
+          t: Date.now(),
+          scores: {
+            attention: Math.round(100 - nervousSystemLoad.get()),
+            nervous: Math.round(nervousSystemLoad.get()),
+            identity: Math.round(identityCoherence.get()),
+            agency: Math.round(agencyScore.get()),
+            meaning: Math.round(meaningScore.get())
+          },
+          sliders: {
+            sleepDebt: Math.round(sleepDebt.get()),
+            stimulation: Math.round(stimulationLevel.get()),
+            socialPressure: Math.round(socialPressure.get()),
+            economicStress: Math.round(economicStress.get()),
+            physicalMovement: Math.round(physicalMovement.get()),
+            syntheticInteraction: Math.round(syntheticInteraction.get()),
+            natureExposure: Math.round(natureExposure.get()),
+            purposeClarity: Math.round(purposeClarity.get())
+          }
+        });
+        if (scoreHistory.current.length > 30) {
+          scoreHistory.current.shift();
+        }
+      }
     }, 1000);
     return () => clearInterval(timer);
-  }, [isReady, isRebooting]);
+  }, [
+    isReady, isRebooting, nervousSystemLoad, identityCoherence, agencyScore, meaningScore,
+    sleepDebt, stimulationLevel, socialPressure, economicStress, physicalMovement,
+    syntheticInteraction, natureExposure, purposeClarity
+  ]);
 
   const handleStart = () => {
     if (synthRef.current) {
@@ -2385,6 +2445,27 @@ export default function CognitiveSimulator() {
     setSessionDuration(0);
     sessionPeakLoad.current = nervousSystemLoad.get();
     setSessionEventsHistory([]);
+
+    scoreHistory.current = [{
+      t: Date.now(),
+      scores: {
+        attention: Math.round(100 - nervousSystemLoad.get()),
+        nervous: Math.round(nervousSystemLoad.get()),
+        identity: Math.round(identityCoherence.get()),
+        agency: Math.round(agencyScore.get()),
+        meaning: Math.round(meaningScore.get())
+      },
+      sliders: {
+        sleepDebt: Math.round(sleepDebt.get()),
+        stimulation: Math.round(stimulationLevel.get()),
+        socialPressure: Math.round(socialPressure.get()),
+        economicStress: Math.round(economicStress.get()),
+        physicalMovement: Math.round(physicalMovement.get()),
+        syntheticInteraction: Math.round(syntheticInteraction.get()),
+        natureExposure: Math.round(natureExposure.get()),
+        purposeClarity: Math.round(purposeClarity.get())
+      }
+    }];
   };
 
   const handleOnboardingComplete = useCallback((values: {
@@ -2394,6 +2475,8 @@ export default function CognitiveSimulator() {
     economicStress: number;
     physicalMovement: number;
     syntheticInteraction: number;
+    natureExposure: number;
+    purposeClarity: number;
   }) => {
     sleepDebt.set(values.sleepDebt);
     stimulationLevel.set(values.stimulationLevel);
@@ -2401,12 +2484,14 @@ export default function CognitiveSimulator() {
     economicStress.set(values.economicStress);
     physicalMovement.set(values.physicalMovement);
     syntheticInteraction.set(values.syntheticInteraction);
+    natureExposure.set(values.natureExposure);
+    purposeClarity.set(values.purposeClarity);
 
-    // Mapped load and starts
-    const load = Math.min(100, values.stimulationLevel * (1 + (values.sleepDebt * 0.015)));
+    // Mapped load and starts using new formulas
+    const load = Math.min(100, values.stimulationLevel * (1 + (values.sleepDebt / 100 * 0.8))) * (1 - values.natureExposure / 100 * 0.15);
     const attention = 100 - load;
-    const agency = Math.max(0, Math.min(100, 30 + (values.physicalMovement * 0.30) - (values.economicStress * 0.30) - (values.sleepDebt * 0.25) - (load * 0.15)));
-    const meaning = Math.max(0, Math.min(100, 15 + (values.physicalMovement * 0.40) - (values.stimulationLevel * 0.25) + (100 - values.syntheticInteraction) * 0.15 - (values.economicStress * 0.15) - (values.sleepDebt * 0.10)));
+    const meaning = Math.max(0, Math.min(100, 15 + (values.physicalMovement * 0.40) - (values.stimulationLevel * 0.25) + (100 - values.syntheticInteraction) * 0.15 - (values.economicStress * 0.15) - (values.sleepDebt * 0.10) + (values.natureExposure * 0.12)));
+    const agency = Math.max(0, Math.min(100, 25 + (values.physicalMovement * 0.55) - (values.economicStress * 0.25) - (values.sleepDebt * 0.20) - (load * 0.08) + (meaning * 0.12) + (values.purposeClarity * 0.15)));
 
     setSystemStartScores({
       attention,
@@ -2416,8 +2501,29 @@ export default function CognitiveSimulator() {
       meaning
     });
 
+    scoreHistory.current = [{
+      t: Date.now(),
+      scores: {
+        attention,
+        nervous: load,
+        identity: Math.max(0, 100 - values.syntheticInteraction),
+        agency,
+        meaning
+      },
+      sliders: {
+        sleepDebt: values.sleepDebt,
+        stimulation: values.stimulationLevel,
+        socialPressure: values.socialPressure,
+        economicStress: values.economicStress,
+        physicalMovement: values.physicalMovement,
+        syntheticInteraction: values.syntheticInteraction,
+        natureExposure: values.natureExposure,
+        purposeClarity: values.purposeClarity
+      }
+    }];
+
     setShowOnboarding(false);
-  }, [sleepDebt, stimulationLevel, socialPressure, economicStress, physicalMovement, syntheticInteraction]);
+  }, [sleepDebt, stimulationLevel, socialPressure, economicStress, physicalMovement, syntheticInteraction, natureExposure, purposeClarity]);
 
   const handleApplyPrescriptionTargets = useCallback((
     targets: {
@@ -2427,6 +2533,8 @@ export default function CognitiveSimulator() {
       economicStress?: number;
       physicalMovement?: number;
       syntheticInteraction?: number;
+      natureExposure?: number;
+      purposeClarity?: number;
     },
     targetArchetypeId: string | null
   ) => {
@@ -2451,6 +2559,12 @@ export default function CognitiveSimulator() {
     if (targets.syntheticInteraction !== undefined) {
       animate(syntheticInteraction, targets.syntheticInteraction, { duration, ease });
     }
+    if (targets.natureExposure !== undefined) {
+      animate(natureExposure, targets.natureExposure, { duration, ease });
+    }
+    if (targets.purposeClarity !== undefined) {
+      animate(purposeClarity, targets.purposeClarity, { duration, ease });
+    }
 
     setActiveArchetype(null);
 
@@ -2463,7 +2577,7 @@ export default function CognitiveSimulator() {
         startCompression('day');
       }
     }
-  }, [stimulationLevel, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction, isCompressionActive, startCompression]);
+  }, [stimulationLevel, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction, natureExposure, purposeClarity, isCompressionActive, startCompression]);
 
   const handleReboot = () => {
     if (isRebooting) return;
@@ -2485,6 +2599,8 @@ export default function CognitiveSimulator() {
       economicStress.set(30);
       physicalMovement.set(50);
       socialPressure.set(20);
+      natureExposure.set(20);
+      purposeClarity.set(40);
       nervousSystemLoad.set(1);
       identityCoherence.set(100);
       agencyScore.set(65);
@@ -2496,6 +2612,7 @@ export default function CognitiveSimulator() {
       setSessionDuration(0);
       sessionPeakLoad.current = 1;
       setSessionEventsHistory([]);
+      scoreHistory.current = [];
       setSystemStartScores({
         attention: 65, nervous: 1, identity: 100, agency: 65, meaning: 75,
       });
@@ -2522,18 +2639,21 @@ export default function CognitiveSimulator() {
         socialPressure: Math.round(socialPressure.get()),
         economicStress: Math.round(economicStress.get()),
         physicalMovement: Math.round(physicalMovement.get()),
-        syntheticInteraction: Math.round(syntheticInteraction.get())
+        syntheticInteraction: Math.round(syntheticInteraction.get()),
+        natureExposure: Math.round(natureExposure.get()),
+        purposeClarity: Math.round(purposeClarity.get())
       },
       sessionDuration: sessionDuration,
       activeArchetype: activeArchetype,
       flowProbability: Math.round(flowProbability.get() * 100),
-      firedEvents: sessionEventsHistory
+      firedEvents: sessionEventsHistory,
+      scoreHistory: [...scoreHistory.current]
     };
   }, [
     sessionDuration, activeArchetype, sessionEventsHistory,
     nervousSystemLoad, identityCoherence, agencyScore, meaningScore,
     sleepDebt, stimulationLevel, socialPressure, economicStress,
-    physicalMovement, syntheticInteraction, flowProbability
+    physicalMovement, syntheticInteraction, natureExposure, purposeClarity, flowProbability
   ]);
 
   const handleDeepAnalysis = useCallback(() => {
@@ -2708,6 +2828,8 @@ export default function CognitiveSimulator() {
           economicStress={economicStress}
           physicalMovement={physicalMovement}
           syntheticInteraction={syntheticInteraction}
+          natureExposure={natureExposure}
+          purposeClarity={purposeClarity}
         />
 
         {/* Center Panel - The Core Experiment */}
@@ -2777,6 +2899,8 @@ export default function CognitiveSimulator() {
                 economicStress={economicStress}
                 physicalMovement={physicalMovement}
                 syntheticInteraction={syntheticInteraction}
+                natureExposure={natureExposure}
+                purposeClarity={purposeClarity}
                 disabled={isRebooting}
                 onArchetypeSelect={setActiveArchetype}
               />
@@ -2817,6 +2941,17 @@ export default function CognitiveSimulator() {
                     valueSuffix="%"
                     disabled={isRebooting}
                   />
+
+                  {/* Slider 7: Nature Exposure */}
+                  <SimulationSlider 
+                    label="NATURE EXPOSURE"
+                    icon={Leaf}
+                    min={0}
+                    max={100}
+                    motionValue={natureExposure}
+                    valueSuffix="%"
+                    disabled={isRebooting}
+                  />
                 </div>
 
                 {/* Right Column Sliders */}
@@ -2850,6 +2985,17 @@ export default function CognitiveSimulator() {
                     min={0}
                     max={100}
                     motionValue={socialPressure}
+                    valueSuffix="%"
+                    disabled={isRebooting}
+                  />
+
+                  {/* Slider 8: Purpose Clarity */}
+                  <SimulationSlider 
+                    label="PURPOSE CLARITY"
+                    icon={Compass}
+                    min={0}
+                    max={100}
+                    motionValue={purposeClarity}
                     valueSuffix="%"
                     disabled={isRebooting}
                   />
@@ -3059,7 +3205,7 @@ export default function CognitiveSimulator() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               transition={{ duration: 0.25, ease: "easeOut" }}
-              className="max-w-xl w-full bg-black border border-zinc-800 p-6 font-mono text-zinc-300 rounded-none flex flex-col gap-4 relative shadow-2xl"
+              className="max-w-xl w-full max-h-[90vh] overflow-y-auto bg-black border border-zinc-800 p-6 font-mono text-zinc-300 rounded-none flex flex-col gap-4 relative shadow-2xl"
             >
               <div className="border-b border-zinc-800 pb-3">
                 <div className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest text-left">
@@ -3124,6 +3270,167 @@ export default function CognitiveSimulator() {
                   </div>
                 </div>
               </div>
+
+              {/* Cognitive Trajectory Graph */}
+              {(() => {
+                const getTrajectoryPoints = (
+                  initial: number,
+                  peak: number,
+                  trough: number,
+                  final: number,
+                  isInverted: boolean
+                ) => {
+                  let mid = peak;
+                  if (isInverted) {
+                    if (Math.abs(peak - initial) >= Math.abs(initial - trough)) {
+                      mid = peak;
+                    } else {
+                      mid = trough;
+                    }
+                  } else {
+                    if (Math.abs(initial - trough) >= Math.abs(peak - initial)) {
+                      mid = trough;
+                    } else {
+                      mid = peak;
+                    }
+                  }
+                  return [initial, mid, final];
+                };
+
+                const systemsList = [
+                  {
+                    name: 'ATTENTION',
+                    points: getTrajectoryPoints(
+                      100 - autopsyReport.initials.load,
+                      100 - autopsyReport.troughs.load,
+                      100 - autopsyReport.peaks.load,
+                      100 - autopsyReport.finals.load,
+                      false
+                    ),
+                    color: '#818cf8' // indigo-400
+                  },
+                  {
+                    name: 'NERVOUS LOAD',
+                    points: getTrajectoryPoints(
+                      autopsyReport.initials.load,
+                      autopsyReport.peaks.load,
+                      autopsyReport.troughs.load,
+                      autopsyReport.finals.load,
+                      true
+                    ),
+                    color: '#f43f5e' // rose-500
+                  },
+                  {
+                    name: 'IDENTITY',
+                    points: getTrajectoryPoints(
+                      autopsyReport.initials.coherence,
+                      autopsyReport.peaks.coherence,
+                      autopsyReport.troughs.coherence,
+                      autopsyReport.finals.coherence,
+                      false
+                    ),
+                    color: '#a855f7' // purple-500
+                  },
+                  {
+                    name: 'AGENCY',
+                    points: getTrajectoryPoints(
+                      autopsyReport.initials.agency,
+                      autopsyReport.peaks.agency,
+                      autopsyReport.troughs.agency,
+                      autopsyReport.finals.agency,
+                      false
+                    ),
+                    color: '#10b981' // emerald-500
+                  },
+                  {
+                    name: 'MEANING',
+                    points: getTrajectoryPoints(
+                      autopsyReport.initials.meaning,
+                      autopsyReport.peaks.meaning,
+                      autopsyReport.troughs.meaning,
+                      autopsyReport.finals.meaning,
+                      false
+                    ),
+                    color: '#f5c842' // yellow/amber
+                  }
+                ];
+
+                const height = 110;
+                const padLeft = 45;
+                const padRight = 480;
+                const padTop = 10;
+                const padBottom = 95;
+
+                const getSvgCoords = (pts: number[]) => {
+                  return pts.map((val, idx) => {
+                    const x = idx === 0 ? padLeft : (idx === 1 ? 262.5 : padRight);
+                    const y = padBottom - (val * (padBottom - padTop)) / 100;
+                    return { x, y };
+                  });
+                };
+
+                return (
+                  <div className="border border-zinc-900 p-3 flex flex-col gap-2">
+                    <div className="text-[8px] text-zinc-500 font-bold uppercase tracking-wider text-left">
+                      &gt; Cognitive Trajectory Graph (3-Point Reconstruction):
+                    </div>
+                    <svg width="100%" height="120" viewBox="0 0 500 120" className="font-mono overflow-visible">
+                      {/* Grid Lines */}
+                      <line x1={padLeft} y1={padTop} x2={padRight} y2={padTop} stroke="#1a1a1c" strokeWidth="0.5" />
+                      <line x1={padLeft} y1={(padTop + padBottom) / 2} x2={padRight} y2={(padTop + padBottom) / 2} stroke="#151517" strokeWidth="0.5" strokeDasharray="3,3" />
+                      <line x1={padLeft} y1={padBottom} x2={padRight} y2={padBottom} stroke="#1a1a1c" strokeWidth="0.5" />
+
+                      {/* Axes Labels */}
+                      <text x={padLeft - 10} y={padTop + 3} textAnchor="end" className="text-[8px] fill-zinc-650">100</text>
+                      <text x={padLeft - 10} y={(padTop + padBottom) / 2 + 3} textAnchor="end" className="text-[8px] fill-zinc-650">50</text>
+                      <text x={padLeft - 10} y={padBottom + 3} textAnchor="end" className="text-[8px] fill-zinc-650">0</text>
+
+                      {/* X Labels */}
+                      <text x={padLeft} y={height + 2} textAnchor="start" className="text-[8px] fill-zinc-600">START</text>
+                      <text x={262.5} y={height + 2} textAnchor="middle" className="text-[8px] fill-zinc-600">MID-RUN</text>
+                      <text x={padRight} y={height + 2} textAnchor="end" className="text-[8px] fill-zinc-600">END</text>
+
+                      {/* Lines */}
+                      {systemsList.map(sys => {
+                        const coords = getSvgCoords(sys.points);
+                        const d = `M ${coords[0].x},${coords[0].y} L ${coords[1].x},${coords[1].y} L ${coords[2].x},${coords[2].y}`;
+                        return (
+                          <g key={sys.name}>
+                            <path
+                              d={d}
+                              fill="none"
+                              stroke={sys.color}
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="opacity-80"
+                            />
+                            {coords.map((c, cIdx) => (
+                              <circle
+                                key={cIdx}
+                                cx={c.x}
+                                cy={c.y}
+                                r="2"
+                                fill={sys.color}
+                              />
+                            ))}
+                          </g>
+                        );
+                      })}
+                    </svg>
+
+                    {/* Small legend */}
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[7px] font-mono text-zinc-550 uppercase mt-1">
+                      {systemsList.map(sys => (
+                        <div key={sys.name} className="flex items-center space-x-1">
+                          <span className="w-1.5 h-1.5" style={{ backgroundColor: sys.color }} />
+                          <span>{sys.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Peak and Trough Matrix Table */}
               <div className="border border-zinc-900 p-3">
@@ -3214,14 +3521,7 @@ export default function CognitiveSimulator() {
           agency: agencyScore.get(),
           meaning: meaningScore.get(),
         }}
-        sliderValues={{
-          sleepDebt: sleepDebt.get(),
-          stimulation: stimulationLevel.get(),
-          socialPressure: socialPressure.get(),
-          economicStress: economicStress.get(),
-          physicalMovement: physicalMovement.get(),
-          syntheticInteraction: syntheticInteraction.get(),
-        }}
+        sliderValues={getSliderSnapshot()}
         activeArchetype={activeArchetype}
         insight={currentInsight}
         onApplyTargets={handleApplyPrescriptionTargets}

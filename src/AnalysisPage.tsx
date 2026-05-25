@@ -44,6 +44,16 @@ const getArchetypeRisk = (name: string): { label: string; level: number; color: 
   return { label: "VERY LOW", level: 1, color: "text-emerald-500" }; // Recovery Cabin, Athletic Recovery
 };
 
+const colorMap: Record<string, string> = {
+  'ATTENTION': '#818cf8',
+  'NERVOUS LOAD': '#f43f5e',
+  'IDENTITY': '#a855f7',
+  'AGENCY': '#10b981',
+  'MEANING': '#f5c842',
+  'NATURE EXPOSURE': '#22c55e',
+  'PURPOSE CLARITY': '#06b6d4'
+};
+
 const formatSustainability = (days: number): string => {
   if (days > 365) return 'INDEFINITE'
   if (days > 90) return `~${Math.round(days / 30)} MONTHS`
@@ -75,21 +85,87 @@ export default function AnalysisPage() {
     );
   }
 
-  const { systemScores, sliderValues, sessionDuration, activeArchetype, flowProbability } = state;
-  const { stimulation, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction } = sliderValues;
+  const { systemScores, sliderValues, sessionDuration, activeArchetype, flowProbability, scoreHistory } = state;
+  const { stimulation, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction, natureExposure, purposeClarity } = sliderValues;
+
+  const [showCurrent, setShowCurrent] = useState(true);
+  const [showTarget, setShowTarget] = useState(true);
+
+  const renderSparkline = (sysName: string) => {
+    const points = (scoreHistory || []).map(entry => {
+      if (sysName === 'ATTENTION') return entry.scores.attention;
+      if (sysName === 'NERVOUS LOAD') return entry.scores.nervous;
+      if (sysName === 'IDENTITY') return entry.scores.identity;
+      if (sysName === 'AGENCY') return entry.scores.agency;
+      if (sysName === 'MEANING') return entry.scores.meaning;
+      if (sysName === 'NATURE EXPOSURE') return entry.sliders.natureExposure;
+      if (sysName === 'PURPOSE CLARITY') return entry.sliders.purposeClarity;
+      return 0;
+    });
+
+    const sysColor = colorMap[sysName] || '#fff';
+
+    if (points.length < 2) {
+      const currentVal = points.length === 1 ? points[0] : 50;
+      const yVal = 28 - (currentVal * 26) / 100;
+      return (
+        <div className="w-full h-[30px] flex items-center justify-center border border-zinc-900/30 bg-zinc-950/20 select-none">
+          <svg width="100%" height="30" viewBox="0 0 104 30" className="opacity-30">
+            <line x1="0" y1={yVal} x2="100" y2={yVal} stroke={sysColor} strokeWidth="1" strokeDasharray="2,2" />
+            <circle cx="100" cy={yVal} r="1.5" fill={sysColor} />
+          </svg>
+        </div>
+      );
+    }
+
+    const width = 100;
+    const height = 30;
+    const padding = 2;
+    const innerHeight = height - padding * 2;
+
+    const pathCoords = points.map((val, idx) => {
+      const x = (idx / (points.length - 1)) * width;
+      const y = height - padding - (val * innerHeight) / 100;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+
+    const pathData = `M ${pathCoords.join(' L ')}`;
+    const lastY = height - padding - (points[points.length - 1] * innerHeight) / 100;
+
+    return (
+      <div className="w-full h-[30px] select-none">
+        <svg width="100%" height={height} viewBox="0 0 104 30" className="opacity-80">
+          <path
+            d={pathData}
+            fill="none"
+            stroke={sysColor}
+            strokeWidth="1.25"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <circle
+            cx={width}
+            cy={lastY}
+            r="2"
+            fill={sysColor}
+          />
+        </svg>
+      </div>
+    );
+  };
 
   // ───────────────────────────────────────────────────────────────────────────
   // SECTION 2 MATH: SURVIVAL CALCULATIONS
   // ───────────────────────────────────────────────────────────────────────────
   const rates = useMemo(() => {
     return {
-      attention: (stimulation * 0.3 + sleepDebt * 0.2) / 20,
-      nervous: (stimulation * 0.25 + sleepDebt * 0.3 + economicStress * 0.15) / 20,
-      agency: (economicStress * 0.3 + sleepDebt * 0.25 + systemScores.nervous * 0.15) / 20,
-      meaning: (stimulation * 0.25 + (100 - physicalMovement) * 0.4) / 20,
+      attention: ((stimulation * 0.3 + sleepDebt * 0.2) / 20) * (1 - purposeClarity / 100 * 0.3),
+      nervous: ((stimulation * 0.25 + sleepDebt * 0.3 + economicStress * 0.15) / 20) * (1 - natureExposure / 100 * 0.15),
+      agency: Math.max(0, (economicStress * 0.3 + sleepDebt * 0.25 + systemScores.nervous * 0.15 - purposeClarity * 0.15) / 20),
+      meaning: Math.max(0, (stimulation * 0.25 + (100 - physicalMovement) * 0.4 - natureExposure * 0.12) / 20),
       identity: syntheticInteraction / 20
     };
-  }, [stimulation, sleepDebt, economicStress, syntheticInteraction, physicalMovement, systemScores.nervous]);
+  }, [stimulation, sleepDebt, economicStress, syntheticInteraction, physicalMovement, systemScores.nervous, natureExposure, purposeClarity]);
 
   const survivalMetrics = useMemo(() => {
     const list = [
@@ -135,6 +211,77 @@ export default function AnalysisPage() {
       return { ...item, status, colorClass };
     });
   }, [systemScores, rates]);
+
+  // Find nearest archetype dynamically based on current sliders
+  const nearestArch = useMemo(() => {
+    let minDistance = Infinity;
+    let nearest = ARCHETYPES[6]; // default to cabin
+    
+    ARCHETYPES.forEach(arch => {
+      const distance = 
+        Math.pow(stimulation - arch.targets.stimulation, 2) +
+        Math.pow(sleepDebt - arch.targets.sleepDebt, 2) +
+        Math.pow(socialPressure - arch.targets.socialPressure, 2) +
+        Math.pow(economicStress - arch.targets.economicStress, 2) +
+        Math.pow(physicalMovement - arch.targets.physicalMovement, 2) +
+        Math.pow(syntheticInteraction - arch.targets.syntheticInteraction, 2) +
+        Math.pow(natureExposure - arch.targets.natureExposure, 2) +
+        Math.pow(purposeClarity - arch.targets.purposeClarity, 2);
+      
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearest = arch;
+      }
+    });
+    return nearest;
+  }, [stimulation, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction, natureExposure, purposeClarity]);
+
+  // Environmental Radar points calculation
+  const radarPoints = useMemo(() => {
+    const currentVals = [
+      stimulation,
+      sleepDebt,
+      socialPressure,
+      economicStress,
+      physicalMovement,
+      syntheticInteraction,
+      natureExposure,
+      purposeClarity
+    ];
+
+    const targetVals = [
+      nearestArch.targets.stimulation,
+      nearestArch.targets.sleepDebt,
+      nearestArch.targets.socialPressure,
+      nearestArch.targets.economicStress,
+      nearestArch.targets.physicalMovement,
+      nearestArch.targets.syntheticInteraction,
+      nearestArch.targets.natureExposure,
+      nearestArch.targets.purposeClarity
+    ];
+
+    const cx = 110;
+    const cy = 110;
+    const R = 75;
+
+    const currentPoints = currentVals.map((v, i) => {
+      const angle = (i * Math.PI) / 4 - Math.PI / 2;
+      const d = (v / 105) * R; // 105 to give a small safety padding at the outer edge
+      const x = cx + d * Math.cos(angle);
+      const y = cy + d * Math.sin(angle);
+      return { x, y };
+    });
+
+    const targetPoints = targetVals.map((v, i) => {
+      const angle = (i * Math.PI) / 4 - Math.PI / 2;
+      const d = (v / 105) * R;
+      const x = cx + d * Math.cos(angle);
+      const y = cy + d * Math.sin(angle);
+      return { x, y };
+    });
+
+    return { currentPoints, targetPoints, cx, cy, R };
+  }, [stimulation, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction, natureExposure, purposeClarity, nearestArch]);
 
   // Overall rating logic
   const overallSustainability = useMemo(() => {
@@ -305,7 +452,7 @@ ENVIRONMENTAL DRIVERS & ACTIVE COUPLING TRAJECTORIES:
   }, [roadmapTargetId]);
 
   const roadmapDeltas = useMemo(() => {
-    const cur = { stimulation, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction };
+    const cur = { stimulation, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction, natureExposure, purposeClarity };
     const tar = targetArchetype.targets;
 
     const allDeltas = [
@@ -314,43 +461,47 @@ ENVIRONMENTAL DRIVERS & ACTIVE COUPLING TRAJECTORIES:
       { key: 'socialPressure', label: 'SOCIAL PRESSURE', cur: cur.socialPressure, tar: tar.socialPressure, diff: tar.socialPressure - cur.socialPressure },
       { key: 'economicStress', label: 'ECONOMIC STRESS', cur: cur.economicStress, tar: tar.economicStress, diff: tar.economicStress - cur.economicStress },
       { key: 'physicalMovement', label: 'PHYSICAL MOVEMENT', cur: cur.physicalMovement, tar: tar.physicalMovement, diff: tar.physicalMovement - cur.physicalMovement },
-      { key: 'syntheticInteraction', label: 'SYNTHETIC INTERACTION', cur: cur.syntheticInteraction, tar: tar.syntheticInteraction, diff: tar.syntheticInteraction - cur.syntheticInteraction }
+      { key: 'syntheticInteraction', label: 'SYNTHETIC INTERACTION', cur: cur.syntheticInteraction, tar: tar.syntheticInteraction, diff: tar.syntheticInteraction - cur.syntheticInteraction },
+      { key: 'natureExposure', label: 'NATURE EXPOSURE', cur: cur.natureExposure, tar: tar.natureExposure, diff: tar.natureExposure - cur.natureExposure },
+      { key: 'purposeClarity', label: 'PURPOSE CLARITY', cur: cur.purposeClarity, tar: tar.purposeClarity, diff: tar.purposeClarity - cur.purposeClarity }
     ];
 
     // Sort by absolute delta to identify highest-impact changes
     return allDeltas.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
-  }, [targetArchetype, stimulation, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction]);
+  }, [targetArchetype, stimulation, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction, natureExposure, purposeClarity]);
 
   // Project deterministic scores week by week
   const projections = useMemo(() => {
     const t = targetArchetype.targets;
-    const cur = { stimulation, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction };
+    const cur = { stimulation, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction, natureExposure, purposeClarity };
 
     // Group deltas into weeks
-    // Week 1: Priority changes (highest 2 deltas adjusted to target)
+    // Week 1: Priority changes (highest 3 deltas adjusted to target)
     const week1Sliders = { ...cur };
     week1Sliders[roadmapDeltas[0].key as keyof typeof cur] = roadmapDeltas[0].tar;
     week1Sliders[roadmapDeltas[1].key as keyof typeof cur] = roadmapDeltas[1].tar;
+    week1Sliders[roadmapDeltas[2].key as keyof typeof cur] = roadmapDeltas[2].tar;
 
-    // Week 2: Secondary changes (next 2 deltas adjusted)
+    // Week 2: Secondary changes (next 3 deltas adjusted)
     const week2Sliders = { ...week1Sliders };
-    week2Sliders[roadmapDeltas[2].key as keyof typeof cur] = roadmapDeltas[2].tar;
     week2Sliders[roadmapDeltas[3].key as keyof typeof cur] = roadmapDeltas[3].tar;
+    week2Sliders[roadmapDeltas[4].key as keyof typeof cur] = roadmapDeltas[4].tar;
+    week2Sliders[roadmapDeltas[5].key as keyof typeof cur] = roadmapDeltas[5].tar;
 
-    // Week 3: Fine-tuning (all adjusted)
+    // Week 3: Fine-tuning (all 8 adjusted)
     const week3Sliders = { ...t };
 
     // Function to calculate scores
     const calcScores = (s: typeof cur) => {
-      const nervous = Math.min(100, Math.max(0, s.stimulation * (1 + (s.sleepDebt / 100 * 0.8))));
+      const nervous = Math.min(100, Math.max(0, s.stimulation * (1 + (s.sleepDebt / 100 * 0.8)))) * (1 - s.natureExposure / 100 * 0.15);
       const attention = Math.max(0, Math.min(100, 100 - nervous));
       const identity = Math.max(0, Math.min(100, 100 - s.syntheticInteraction));
       
-      const agency = Math.max(0, Math.min(100, 
-        30 + (s.physicalMovement * 0.3) - (s.economicStress * 0.3) - (s.sleepDebt * 0.25) - (nervous * 0.15)
-      ));
       const meaning = Math.max(0, Math.min(100, 
-        15 + (s.physicalMovement * 0.4) - (s.stimulation * 0.25) + (100 - s.syntheticInteraction) * 0.15 - (s.economicStress * 0.15) - (s.sleepDebt * 0.10)
+        15 + (s.physicalMovement * 0.40) - (s.stimulation * 0.25) + (100 - s.syntheticInteraction) * 0.15 - (s.economicStress * 0.15) - (s.sleepDebt * 0.10) + (s.natureExposure * 0.12)
+      ));
+      const agency = Math.max(0, Math.min(100, 
+        25 + (s.physicalMovement * 0.55) - (s.economicStress * 0.25) - (s.sleepDebt * 0.20) - (nervous * 0.08) + (meaning * 0.12) + (s.purposeClarity * 0.15)
       ));
 
       return { attention, nervous, identity, agency, meaning };
@@ -362,7 +513,7 @@ ENVIRONMENTAL DRIVERS & ACTIVE COUPLING TRAJECTORIES:
       week2: { sliders: week2Sliders, scores: calcScores(week2Sliders) },
       week3: { sliders: week3Sliders, scores: calcScores(week3Sliders) }
     };
-  }, [targetArchetype, roadmapDeltas, stimulation, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction]);
+  }, [targetArchetype, roadmapDeltas, stimulation, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction, natureExposure, purposeClarity]);
 
   // ───────────────────────────────────────────────────────────────────────────
   // SECTION 6: STATIC THRESHOLD REFERENCE DATA
@@ -411,6 +562,22 @@ ENVIRONMENTAL DRIVERS & ACTIVE COUPLING TRAJECTORIES:
         { range: "60-79", state: "PRESENT", feel: "Occasional purpose, daily engagement.", enable: "Enables standard motivation; vulnerable to routine boredom." },
         { range: "30-59", state: "ERODED", feel: "Skepticism, background futility.", enable: "Prevents long-term commitment; feels like running on empty." },
         { range: "0-29", state: "ABSENT", feel: "Total void; nothing feels significant.", enable: "Leads to severe apathy, nihilism, and complete loss of drive." }
+      ]
+    },
+    {
+      systemName: "NATURE EXPOSURE",
+      rows: [
+        { range: "80-100", state: "REGENERATIVE", feel: "Nervous load feels quiet; mental fatigue lifts quickly.", enable: "Reduces nervous system load by 15%; boosts existential stability target by +12." },
+        { range: "40-79", state: "MODERATE", feel: "Standard urban background tension.", enable: "Provides moderate load regulation; standard meaning capacity." },
+        { range: "0-39", state: "DEPLETED", feel: "Heavy head, persistent background fatigue.", enable: "Triggers higher base stress targets; limits passive mental recovery." }
+      ]
+    },
+    {
+      systemName: "PURPOSE CLARITY",
+      rows: [
+        { range: "80-100", state: "DIRECTED", feel: "Clear priorities; next actions require no willpower.", enable: "Boosts agency target by +15; reduces attention degradation rate by 30%." },
+        { range: "40-79", state: "ADAPTIVE", feel: "Vague intent; can work but easily distracted.", enable: "Normal agency; attention degradation rate is standard." },
+        { range: "0-39", state: "PARALYZED", feel: "What is the point? Starting any task feels heavy.", enable: "Severe agency penalty; high vulnerability to distraction and scroll loop locks." }
       ]
     }
   ];
@@ -461,13 +628,15 @@ ENVIRONMENTAL DRIVERS & ACTIVE COUPLING TRAJECTORIES:
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-stretch">
             
             {/* System Status Grid */}
-            <div className="md:col-span-3 grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="md:col-span-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-3">
               {[
                 { name: 'ATTENTION', score: systemScores.attention, phrase: systemScores.attention > 70 ? 'SUSTAINED FOCUS CAPACITY' : systemScores.attention > 40 ? 'DEGRADED COGNITIVE SPAN' : 'SEVERELY FRAGMENTED FOCUS', isInverted: false },
                 { name: 'NERVOUS LOAD', score: systemScores.nervous, phrase: systemScores.nervous < 40 ? 'REGULATED LOAD STATE' : systemScores.nervous <= 70 ? 'CHRONIC SYSTEM STRESS' : 'CRITICAL NEURAL OVERLOAD', isInverted: true },
                 { name: 'IDENTITY', score: systemScores.identity, phrase: systemScores.identity > 70 ? 'COHERENT SELF STRUCTURE' : systemScores.identity > 40 ? 'UNSTABLE IDENTITY DRIFT' : 'STRUCTURAL INTEGRITY LOSS', isInverted: false },
                 { name: 'AGENCY', score: systemScores.agency, phrase: systemScores.agency > 70 ? 'ACTIVE INITIATION MODE' : systemScores.agency > 40 ? 'IMPAIRED WILL CAPACITY' : 'EXECUTIVE SHUTDOWN STATE', isInverted: false },
-                { name: 'MEANING', score: systemScores.meaning, phrase: systemScores.meaning > 70 ? 'PURPOSE SIGNAL STRONG' : systemScores.meaning > 40 ? 'ERODED EXISTENTIAL DUST' : 'PROFOUND VOID STATE', isInverted: false }
+                { name: 'MEANING', score: systemScores.meaning, phrase: systemScores.meaning > 70 ? 'PURPOSE SIGNAL STRONG' : systemScores.meaning > 40 ? 'ERODED EXISTENTIAL DUST' : 'PROFOUND VOID STATE', isInverted: false },
+                { name: 'NATURE EXPOSURE', score: natureExposure, phrase: natureExposure > 70 ? 'INTEGRATED GREEN RECOVERY' : natureExposure > 40 ? 'MODERATE URBAN DISCONNECT' : 'CRITICAL OUTDOOR DEFICIT', isInverted: false },
+                { name: 'PURPOSE CLARITY', score: purposeClarity, phrase: purposeClarity > 70 ? 'DIRECTED INTENT ALIGNMENT' : purposeClarity > 40 ? 'MODERATE DIRECTIONAL DRIFT' : 'EXISTENTIAL PARALYSIS RISK', isInverted: false }
               ].map(sys => {
                 // color-coding
                 let textCol = 'text-zinc-100';
@@ -479,39 +648,222 @@ ENVIRONMENTAL DRIVERS & ACTIVE COUPLING TRAJECTORIES:
                   else if (sys.score < 70) textCol = 'text-amber-500';
                 }
 
+                const sysColor = colorMap[sys.name] || '#fff';
+                const fillPercent = Math.min(100, Math.max(0, Math.round(sys.score)));
+                const bgStyle = {
+                  background: `linear-gradient(to top, ${sysColor}05 0%, ${sysColor}05 ${fillPercent - 1.5}%, ${sysColor}35 ${fillPercent - 0.5}%, ${sysColor}90 ${fillPercent}%, transparent ${fillPercent + 0.5}%, transparent 100%), #070709`
+                };
+
                 return (
-                  <div key={sys.name} className="border border-zinc-900 bg-zinc-950/40 p-4 flex flex-col justify-between space-y-4">
-                    <span className="font-mono text-[9px] tracking-wider text-zinc-500 uppercase">{sys.name}</span>
+                  <div 
+                    key={sys.name} 
+                    style={bgStyle}
+                    className="border border-zinc-900 p-4 flex flex-col justify-between space-y-4"
+                  >
+                    <span className="font-mono text-[9px] tracking-wider text-zinc-500 uppercase leading-tight">{sys.name}</span>
                     <div className="space-y-1">
                       <div className={`font-mono text-3xl font-bold tracking-tight ${textCol}`}>
                         {Math.round(sys.score)}%
                       </div>
-                      <p className="text-[8px] font-mono leading-tight tracking-wider text-zinc-450 uppercase">{sys.phrase}</p>
+                      <p className="text-[8px] font-mono leading-tight tracking-wider text-zinc-450 uppercase mb-3">{sys.phrase}</p>
+                      
+                      {/* Sparkline chart */}
+                      <div className="pt-2 border-t border-zinc-900/50 flex justify-center">
+                        {renderSparkline(sys.name)}
+                      </div>
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            {/* Session Metadata Panel */}
-            <div className="md:col-span-1 border border-zinc-900 bg-zinc-950/60 p-4 font-mono text-[10px] flex flex-col justify-between space-y-4 md:space-y-0">
-              <span className="text-zinc-650 tracking-wider">SESSION PROFILE</span>
-              <div className="space-y-3">
-                <div className="space-y-0.5">
-                  <span className="text-zinc-550 block text-[9px]">ACTIVE ARCHETYPE</span>
-                  <span className="font-bold text-zinc-200 uppercase text-xs">{activeArchetype || "Manual Override"}</span>
-                </div>
-                <div className="space-y-0.5">
-                  <span className="text-zinc-550 block text-[9px]">FLOW PROBABILITY</span>
-                  <span className="font-bold text-amber-500 text-xs">{flowProbability}%</span>
-                </div>
-                <div className="space-y-0.5">
-                  <span className="text-zinc-550 block text-[9px]">EXPOSURE DURATION</span>
-                  <span className="font-bold text-zinc-300 text-xs">{formatDuration(sessionDuration)}</span>
+            {/* Right sidebar details */}
+            <div className="md:col-span-1 flex flex-col gap-4">
+              
+              {/* Session Metadata Panel */}
+              <div className="border border-zinc-900 bg-zinc-950/60 p-4 font-mono text-[10px] flex flex-col justify-between space-y-3">
+                <span className="text-zinc-650 tracking-wider uppercase">SESSION PROFILE</span>
+                <div className="space-y-3">
+                  <div className="space-y-0.5">
+                    <span className="text-zinc-550 block text-[9px]">ACTIVE ARCHETYPE</span>
+                    <span className="font-bold text-zinc-200 uppercase text-xs">{activeArchetype || "Manual Override"}</span>
+                  </div>
+                  <div className="space-y-0.5">
+                    <span className="text-zinc-550 block text-[9px]">FLOW PROBABILITY</span>
+                    <span className="font-bold text-amber-500 text-xs">{flowProbability}%</span>
+                  </div>
+                  <div className="space-y-0.5">
+                    <span className="text-zinc-550 block text-[9px]">EXPOSURE DURATION</span>
+                    <span className="font-bold text-zinc-300 text-xs">{formatDuration(sessionDuration)}</span>
+                  </div>
                 </div>
               </div>
-            </div>
 
+              {/* Environmental Radar Panel */}
+              <div className="border border-zinc-900 bg-zinc-950/90 p-4 flex flex-col items-center justify-between font-mono text-[10px] relative overflow-visible z-10 hover:z-30 hover:scale-[1.3] hover:bg-zinc-950 hover:border-zinc-700 hover:shadow-[0_20px_60px_rgba(0,0,0,0.95)] transition-all duration-300 ease-out">
+                <span className="text-zinc-650 tracking-wider w-full text-left uppercase mb-1">Environmental Radar</span>
+                <div className="text-[7px] text-zinc-500 uppercase tracking-widest text-left w-full mb-3">
+                  comparison vs. nearest archetype ({nearestArch.name})
+                </div>
+                
+                {/* SVG radar chart rendering */}
+                {(() => {
+                  const { currentPoints, targetPoints, cx, cy, R } = radarPoints;
+                  const currentPath = currentPoints.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+                  const targetPath = targetPoints.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+                  const labels = ['STIM', 'SLEEP', 'SOCIAL', 'ECON', 'MOVE', 'SYNTH', 'NATURE', 'PURPOSE'];
+
+                  return (
+                    <div className="relative w-full flex justify-center py-2">
+                      <svg 
+                        width="180" 
+                        height="180" 
+                        viewBox="0 0 220 220" 
+                        className="overflow-visible select-none transition-transform duration-300 ease-in-out origin-center"
+                      >
+                        {/* Concentric helper octagons */}
+                        {[0.25, 0.5, 0.75, 1.0].map((scale, sIdx) => {
+                          const pointsStr = Array.from({ length: 8 }).map((_, i) => {
+                            const angle = (i * Math.PI) / 4 - Math.PI / 2;
+                            const x = cx + scale * R * Math.cos(angle);
+                            const y = cy + scale * R * Math.sin(angle);
+                            return `${x.toFixed(1)},${y.toFixed(1)}`;
+                          }).join(' ');
+                          return (
+                            <polygon
+                              key={sIdx}
+                              points={pointsStr}
+                              fill="none"
+                              stroke="#1e1e21"
+                              strokeWidth="0.5"
+                            />
+                          );
+                        })}
+
+                        {/* Axis helper lines */}
+                        {Array.from({ length: 8 }).map((_, i) => {
+                          const angle = (i * Math.PI) / 4 - Math.PI / 2;
+                          const x2 = cx + R * Math.cos(angle);
+                          const y2 = cy + R * Math.sin(angle);
+                          return (
+                            <line
+                              key={i}
+                              x1={cx}
+                              y1={cy}
+                              x2={x2}
+                              y2={y2}
+                              stroke="#1e1e21"
+                              strokeWidth="0.5"
+                            />
+                          );
+                        })}
+
+                        {/* Current Environment Polygon (drawn first) */}
+                        {showCurrent && (
+                          <>
+                            <polygon
+                              points={currentPath}
+                              fill="rgba(129, 140, 248, 0.15)"
+                              stroke="#6366f1"
+                              strokeWidth="1.25"
+                            />
+                            {/* Vertex dots */}
+                            {currentPoints.map((p, i) => (
+                              <circle
+                                key={i}
+                                cx={p.x}
+                                cy={p.y}
+                                r="1.75"
+                                fill="#818cf8"
+                              />
+                            ))}
+                          </>
+                        )}
+
+                        {/* Target Archetype Target Polygon (drawn on top for proper overlaying) */}
+                        {showTarget && (
+                          <>
+                            <polygon
+                              points={targetPath}
+                              fill="rgba(245, 200, 66, 0.02)"
+                              stroke="rgba(245, 200, 66, 0.75)"
+                              strokeWidth="1.25"
+                              strokeDasharray="2,2"
+                            />
+                            {/* Target Vertex dots */}
+                            {targetPoints.map((p, i) => (
+                              <circle
+                                key={i}
+                                cx={p.x}
+                                cy={p.y}
+                                r="1.75"
+                                fill="#f5c842"
+                              />
+                            ))}
+                          </>
+                        )}
+
+                        {/* Axis Labels */}
+                        {labels.map((lbl, i) => {
+                          const angle = (i * Math.PI) / 4 - Math.PI / 2;
+                          const labelDist = R + 11;
+                          const x = cx + labelDist * Math.cos(angle);
+                          const y = cy + labelDist * Math.sin(angle);
+
+                          let textAnchor: 'middle' | 'start' | 'end' = 'middle';
+                          if (Math.cos(angle) > 0.1) textAnchor = 'start';
+                          else if (Math.cos(angle) < -0.1) textAnchor = 'end';
+
+                          let dy = '3';
+                          if (Math.sin(angle) > 0.5) dy = '9';
+                          else if (Math.sin(angle) < -0.5) dy = '-3';
+
+                          return (
+                            <text
+                              key={lbl}
+                              x={x}
+                              y={y}
+                              textAnchor={textAnchor}
+                              dy={dy}
+                              className="text-[6.5px] font-mono font-bold tracking-wider fill-zinc-500 uppercase"
+                            >
+                              {lbl}
+                            </text>
+                          );
+                        })}
+                      </svg>
+                    </div>
+                  );
+                })()}
+
+                {/* Legend Toggle Controls */}
+                <div className="flex gap-3 text-[8px] font-mono mt-3 text-zinc-500 uppercase w-full justify-center select-none">
+                  <button
+                    onClick={() => setShowCurrent(!showCurrent)}
+                    className={`flex items-center gap-1.5 px-2 py-1 border transition-all duration-200 cursor-pointer ${
+                      showCurrent 
+                        ? 'border-indigo-500/30 text-indigo-400 bg-indigo-950/20' 
+                        : 'border-zinc-900 text-zinc-600 bg-zinc-950/40 opacity-40'
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 ${showCurrent ? 'bg-indigo-500' : 'bg-zinc-700'}`} />
+                    <span>Current</span>
+                  </button>
+                  <button
+                    onClick={() => setShowTarget(!showTarget)}
+                    className={`flex items-center gap-1.5 px-2 py-1 border transition-all duration-200 cursor-pointer ${
+                      showTarget 
+                        ? 'border-amber-500/30 text-amber-400 bg-amber-950/20' 
+                        : 'border-zinc-900 text-zinc-600 bg-zinc-950/40 opacity-40'
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 ${showTarget ? 'border border-dashed border-amber-500 bg-transparent' : 'bg-zinc-700'}`} />
+                    <span>Target ({nearestArch.name.split(' ')[0]})</span>
+                  </button>
+                </div>
+              </div>
+
+            </div>
           </div>
         </section>
 
@@ -700,6 +1052,7 @@ ENVIRONMENTAL DRIVERS & ACTIVE COUPLING TRAJECTORIES:
                     <span className="text-zinc-550 block text-[9px] tracking-wider">ADJUST SLIDERS:</span>
                     <div className="text-zinc-200 font-bold uppercase">&gt; {roadmapDeltas[0].label}: {roadmapDeltas[0].tar}% <span className="text-zinc-500 font-normal">({roadmapDeltas[0].diff > 0 ? '+' : ''}{roadmapDeltas[0].diff}%)</span></div>
                     <div className="text-zinc-200 font-bold uppercase">&gt; {roadmapDeltas[1].label}: {roadmapDeltas[1].tar}% <span className="text-zinc-500 font-normal">({roadmapDeltas[1].diff > 0 ? '+' : ''}{roadmapDeltas[1].diff}%)</span></div>
+                    <div className="text-zinc-200 font-bold uppercase">&gt; {roadmapDeltas[2].label}: {roadmapDeltas[2].tar}% <span className="text-zinc-500 font-normal">({roadmapDeltas[2].diff > 0 ? '+' : ''}{roadmapDeltas[2].diff}%)</span></div>
                   </div>
 
                   <div className="space-y-1.5">
@@ -736,8 +1089,9 @@ ENVIRONMENTAL DRIVERS & ACTIVE COUPLING TRAJECTORIES:
                   
                   <div className="space-y-1 text-[11px]">
                     <span className="text-zinc-550 block text-[9px] tracking-wider">ADJUST SLIDERS:</span>
-                    <div className="text-zinc-200 font-bold uppercase">&gt; {roadmapDeltas[2].label}: {roadmapDeltas[2].tar}% <span className="text-zinc-500 font-normal">({roadmapDeltas[2].diff > 0 ? '+' : ''}{roadmapDeltas[2].diff}%)</span></div>
                     <div className="text-zinc-200 font-bold uppercase">&gt; {roadmapDeltas[3].label}: {roadmapDeltas[3].tar}% <span className="text-zinc-500 font-normal">({roadmapDeltas[3].diff > 0 ? '+' : ''}{roadmapDeltas[3].diff}%)</span></div>
+                    <div className="text-zinc-200 font-bold uppercase">&gt; {roadmapDeltas[4].label}: {roadmapDeltas[4].tar}% <span className="text-zinc-500 font-normal">({roadmapDeltas[4].diff > 0 ? '+' : ''}{roadmapDeltas[4].diff}%)</span></div>
+                    <div className="text-zinc-200 font-bold uppercase">&gt; {roadmapDeltas[5].label}: {roadmapDeltas[5].tar}% <span className="text-zinc-500 font-normal">({roadmapDeltas[5].diff > 0 ? '+' : ''}{roadmapDeltas[5].diff}%)</span></div>
                   </div>
 
                   <div className="space-y-1.5">
@@ -774,8 +1128,8 @@ ENVIRONMENTAL DRIVERS & ACTIVE COUPLING TRAJECTORIES:
                   
                   <div className="space-y-1 text-[11px]">
                     <span className="text-zinc-550 block text-[9px] tracking-wider">ADJUST SLIDERS:</span>
-                    <div className="text-zinc-200 font-bold uppercase">&gt; {roadmapDeltas[4].label}: {roadmapDeltas[4].tar}% <span className="text-zinc-500 font-normal">({roadmapDeltas[4].diff > 0 ? '+' : ''}{roadmapDeltas[4].diff}%)</span></div>
-                    <div className="text-zinc-200 font-bold uppercase">&gt; {roadmapDeltas[5].label}: {roadmapDeltas[5].tar}% <span className="text-zinc-500 font-normal">({roadmapDeltas[5].diff > 0 ? '+' : ''}{roadmapDeltas[5].diff}%)</span></div>
+                    <div className="text-zinc-200 font-bold uppercase">&gt; {roadmapDeltas[6].label}: {roadmapDeltas[6].tar}% <span className="text-zinc-500 font-normal">({roadmapDeltas[6].diff > 0 ? '+' : ''}{roadmapDeltas[6].diff}%)</span></div>
+                    <div className="text-zinc-200 font-bold uppercase">&gt; {roadmapDeltas[7].label}: {roadmapDeltas[7].tar}% <span className="text-zinc-500 font-normal">({roadmapDeltas[7].diff > 0 ? '+' : ''}{roadmapDeltas[7].diff}%)</span></div>
                   </div>
 
                   <div className="space-y-1.5">

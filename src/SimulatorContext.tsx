@@ -15,6 +15,8 @@ export interface SliderSnapshot {
   economicStress: number;
   physicalMovement: number;
   syntheticInteraction: number;
+  natureExposure: number;
+  purposeClarity: number;
 }
 
 export interface FiredEvent {
@@ -29,6 +31,11 @@ export interface SimulatorState {
   activeArchetype: string | null;
   flowProbability: number;
   firedEvents: FiredEvent[];
+  scoreHistory: {
+    t: number;
+    scores: SystemScores;
+    sliders: SliderSnapshot;
+  }[];
 }
 
 export const SimulatorContext = createContext<SimulatorState | null>(null);

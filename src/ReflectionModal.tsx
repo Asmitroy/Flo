@@ -17,6 +17,9 @@ export interface SliderSnapshot {
   socialPressure: number;
   economicStress: number;
   physicalMovement: number;
+  syntheticInteraction: number;
+  natureExposure: number;
+  purposeClarity: number;
 }
 
 interface ReflectionModalProps {
@@ -205,6 +208,42 @@ export function generateInsight(
     agency: scores.agency,
     meaning: scores.meaning
   };
+
+  const att = scores.attention;
+  const load = scores.nervous;
+  const identity = scores.identity;
+  const agency = scores.agency;
+  const meaning = scores.meaning;
+
+  // productive_anxiety check
+  if (att > 70 && load >= 50 && load <= 75 && agency >= 45 && agency <= 65 && meaning < 50) {
+    return "This configuration produces sustained output at the cost of meaning accumulation. Functional indefinitely — joyless eventually.";
+  }
+
+  // burnout_plateau check
+  const avgWellness = (att + (100 - load) + identity + agency + meaning) / 5;
+  if (avgWellness >= 35 && avgWellness <= 52 &&
+      Math.max(att, (100 - load), identity, agency, meaning) -
+      Math.min(att, (100 - load), identity, agency, meaning) < 25) {
+    return "The system is not failing. It is coasting at minimum viable output. The risk is not collapse but calcification.";
+  }
+
+  const purposeClarityVal = sliders.purposeClarity;
+  const meaningVal = scores.meaning;
+
+  // Crucial combination checks
+  if (purposeClarityVal > 65 && meaningVal > 65) {
+    return "Flow prerequisite state: Both purpose clarity and meaning are elevated. The mind is aligned in both its direction and its significance, preparing the architecture for flow.";
+  }
+  if (purposeClarityVal < 35 && meaningVal < 35) {
+    return "Existential paralysis: Both purpose clarity and meaning are depleted. The system has neither a direction to move toward nor a reason to seek one.";
+  }
+  if (purposeClarityVal < 35 && meaningVal > 65) {
+    return "The creative wanderer: High meaning but low purpose clarity. There is a deep capacity for significance and connection, but no structure or immediate priorities to direct the energy.";
+  }
+  if (purposeClarityVal > 65 && meaningVal < 35) {
+    return "The high-functioning empty person: High purpose clarity but low meaning. The system executes priorities with extreme efficiency, but operates in a profound existential void.";
+  }
 
   // ── Recovery Branch Selection Checks (First) ──
   const isRecovery = Object.values(wellnessScores).filter(s => s > 70).length >= 3;

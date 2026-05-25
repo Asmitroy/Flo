@@ -9,6 +9,8 @@ interface OnboardingQuestionnaireProps {
     economicStress: number;
     physicalMovement: number;
     syntheticInteraction: number;
+    natureExposure: number;
+    purposeClarity: number;
   }) => void;
 }
 
@@ -19,6 +21,8 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
   const [financialRating, setFinancialRating] = useState<number | null>(null);
   const [movementRating, setMovementRating] = useState<number | null>(null);
   const [comparisonRating, setComparisonRating] = useState<number | null>(null);
+  const [natureRating, setNatureRating] = useState<number | null>(null);
+  const [purposeRating, setPurposeRating] = useState<number | null>(null);
   
   // Terminal logs state for the final processing screen
   const [terminalLogs, setTerminalLogs] = useState<string[]>([]);
@@ -37,7 +41,9 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
     "Estimate your screen time yesterday (hours) (0-16):",
     "Rate financial stress this month (1-5):",
     "How much did you move your body today? (1=none, 5=a lot) (1-5):",
-    "How much social comparison did you experience today? (1-5):"
+    "How much social comparison did you experience today? (1-5):",
+    "How much time in nature/outdoors today? (1-5):",
+    "How clear are you on your current priorities? (1-5):"
   ];
 
   // Auto-focus text input on step change
@@ -49,7 +55,7 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
 
   // Typewriter effect for prompts
   useEffect(() => {
-    if (currentStep < 5) {
+    if (currentStep < 7) {
       let isCancelled = false;
       const targetText = prompts[currentStep];
       setDisplayedPrompt('');
@@ -74,7 +80,7 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
     }
   }, [currentStep]);
 
-  // Handle number rating selections for Q3, Q4, Q5
+  // Handle number rating selections for Q3 to Q7
   const selectRating = (val: number) => {
     if (processingRef.current) return;
     setErrorMsg('');
@@ -85,17 +91,23 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
       setMovementRating(val);
       setTimeout(() => setCurrentStep(4), 200);
     } else if (currentStep === 4) {
-      processingRef.current = true;
       setComparisonRating(val);
+      setTimeout(() => setCurrentStep(5), 200);
+    } else if (currentStep === 5) {
+      setNatureRating(val);
+      setTimeout(() => setCurrentStep(6), 200);
+    } else if (currentStep === 6) {
+      processingRef.current = true;
+      setPurposeRating(val);
       // Proceed to processing logs
-      processOnboarding(sleepInput, screenTimeInput, financialRating!, movementRating!, val);
+      processOnboarding(sleepInput, screenTimeInput, financialRating!, movementRating!, comparisonRating!, natureRating!, val);
     }
   };
 
   // Keyboard navigation for selector questions
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      if (currentStep >= 2 && currentStep <= 4) {
+      if (currentStep >= 2 && currentStep <= 6) {
         if (e.key >= '1' && e.key <= '5') {
           selectRating(parseInt(e.key));
         }
@@ -103,7 +115,7 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
     };
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [currentStep, sleepInput, screenTimeInput, financialRating, movementRating]);
+  }, [currentStep, sleepInput, screenTimeInput, financialRating, movementRating, comparisonRating, natureRating]);
 
   // Handle number input submissions for Q1 and Q2
   const handleInputSubmit = (e: React.FormEvent) => {
@@ -133,9 +145,11 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
     screenHrs: string, 
     finVal: number, 
     moveVal: number, 
-    compVal: number
+    compVal: number,
+    natureVal: number,
+    purposeVal: number
   ) => {
-    setCurrentStep(5); // Show log animation state
+    setCurrentStep(7); // Show log animation state
     
     const sleepHours = parseFloat(sleepHrs);
     const screenHours = parseFloat(screenHrs);
@@ -147,6 +161,8 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
     const physicalMovement = (moveVal - 1) * 25;
     const syntheticInteraction = (compVal - 1) * 25;
     const socialPressure = (compVal - 1) * 25;
+    const natureExposure = (natureVal - 1) * 25;
+    const purposeClarity = (purposeVal - 1) * 25;
 
     // Euclidean match
     let bestMatch = ARCHETYPES[0];
@@ -158,7 +174,9 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
         Math.pow(arc.targets.socialPressure - socialPressure, 2) +
         Math.pow(arc.targets.economicStress - economicStress, 2) +
         Math.pow(arc.targets.physicalMovement - physicalMovement, 2) +
-        Math.pow(arc.targets.syntheticInteraction - syntheticInteraction, 2)
+        Math.pow(arc.targets.syntheticInteraction - syntheticInteraction, 2) +
+        Math.pow(arc.targets.natureExposure - natureExposure, 2) +
+        Math.pow(arc.targets.purposeClarity - purposeClarity, 2)
       );
       if (dist < minD) {
         minD = dist;
@@ -175,6 +193,8 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
       `> physicalMovement mapped to: ${Math.round(physicalMovement)}%`,
       `> syntheticInteraction mapped to: ${Math.round(syntheticInteraction)}%`,
       `> socialPressure mapped to: ${Math.round(socialPressure)}%`,
+      `> natureExposure mapped to: ${Math.round(natureExposure)}%`,
+      `> purposeClarity mapped to: ${Math.round(purposeClarity)}%`,
       `> CALCULATING NEAREST SYSTEM CONFIGURATION PATTERNS...`,
       `> [SUCCESS] NEURAL ARCHETYPE CORRELATION FOUND.`,
       `> Subject archetype profile: [${bestMatch.name.toUpperCase()}]`,
@@ -208,6 +228,8 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
     const physicalMovement = (movementRating! - 1) * 25;
     const syntheticInteraction = (comparisonRating! - 1) * 25;
     const socialPressure = (comparisonRating! - 1) * 25;
+    const natureExposure = (natureRating! - 1) * 25;
+    const purposeClarity = (purposeRating! - 1) * 25;
 
     localStorage.setItem('snm_onboarded', 'true');
     localStorage.setItem('snm_profile', JSON.stringify({
@@ -217,6 +239,8 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
       physicalMovement,
       syntheticInteraction,
       socialPressure,
+      natureExposure,
+      purposeClarity,
       timestamp: Date.now()
     }));
 
@@ -226,20 +250,22 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
       socialPressure,
       economicStress,
       physicalMovement,
-      syntheticInteraction
+      syntheticInteraction,
+      natureExposure,
+      purposeClarity
     });
   };
 
   // Allow clicking Enter to complete when logs are done
   useEffect(() => {
     const handleEnter = (e: KeyboardEvent) => {
-      if (currentStep === 5 && logsComplete && e.key === 'Enter') {
+      if (currentStep === 7 && logsComplete && e.key === 'Enter') {
         handleFinish();
       }
     };
     window.addEventListener('keydown', handleEnter);
     return () => window.removeEventListener('keydown', handleEnter);
-  }, [currentStep, logsComplete, sleepInput, screenTimeInput, financialRating, movementRating, comparisonRating]);
+  }, [currentStep, logsComplete, sleepInput, screenTimeInput, financialRating, movementRating, comparisonRating, natureRating, purposeRating]);
 
   return (
     <div className="fixed inset-0 bg-black z-50 flex flex-col items-center justify-center p-6 font-mono text-[#00ff66] select-none select-text overflow-hidden">
@@ -260,7 +286,7 @@ export const OnboardingQuestionnaire: React.FC<OnboardingQuestionnaireProps> = (
         </div>
 
         {/* Questionnaire Flow */}
-        {currentStep < 5 ? (
+        {currentStep < 7 ? (
           <div className="space-y-6">
             <div className="min-h-[60px] text-zinc-350 leading-relaxed text-sm">
               <span className="text-white mr-2">&gt;</span>

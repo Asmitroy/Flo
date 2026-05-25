@@ -17,6 +17,8 @@ export interface SliderSnapshot {
   economicStress: number;
   physicalMovement: number;
   syntheticInteraction: number;
+  natureExposure: number;
+  purposeClarity: number;
 }
 
 interface EnvironmentalPrescriptionProps {

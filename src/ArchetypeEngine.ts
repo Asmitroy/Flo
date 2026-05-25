@@ -9,6 +9,8 @@ export interface Archetype {
     economicStress: number;
     physicalMovement: number;
     syntheticInteraction: number;
+    natureExposure: number;
+    purposeClarity: number;
   };
   sustainabilityHours?: number | null;
 }
@@ -25,6 +27,8 @@ export const ARCHETYPES: Archetype[] = [
       economicStress: 60,
       physicalMovement: 20,
       syntheticInteraction: 60,
+      natureExposure: 10,
+      purposeClarity: 45
     },
     sustainabilityHours: null
   },
@@ -39,6 +43,8 @@ export const ARCHETYPES: Archetype[] = [
       economicStress: 75,
       physicalMovement: 15,
       syntheticInteraction: 40,
+      natureExposure: 15,
+      purposeClarity: 65
     },
     sustainabilityHours: null
   },
@@ -53,6 +59,8 @@ export const ARCHETYPES: Archetype[] = [
       economicStress: 30,
       physicalMovement: 10,
       syntheticInteraction: 85,
+      natureExposure: 5,
+      purposeClarity: 20
     },
     sustainabilityHours: null
   },
@@ -67,6 +75,8 @@ export const ARCHETYPES: Archetype[] = [
       economicStress: 90,
       physicalMovement: 5,
       syntheticInteraction: 90,
+      natureExposure: 0,
+      purposeClarity: 40
     },
     sustainabilityHours: null
   },
@@ -81,6 +91,8 @@ export const ARCHETYPES: Archetype[] = [
       economicStress: 25,
       physicalMovement: 75,
       syntheticInteraction: 15,
+      natureExposure: 25,
+      purposeClarity: 90
     },
     sustainabilityHours: 2
   },
@@ -95,6 +107,8 @@ export const ARCHETYPES: Archetype[] = [
       economicStress: 65,
       physicalMovement: 20,
       syntheticInteraction: 60,
+      natureExposure: 30,
+      purposeClarity: 60
     },
     sustainabilityHours: null
   },
@@ -109,6 +123,8 @@ export const ARCHETYPES: Archetype[] = [
       economicStress: 15,
       physicalMovement: 80,
       syntheticInteraction: 10,
+      natureExposure: 85,
+      purposeClarity: 30
     },
     sustainabilityHours: null
   },
@@ -123,6 +139,8 @@ export const ARCHETYPES: Archetype[] = [
       economicStress: 35,
       physicalMovement: 55,
       syntheticInteraction: 25,
+      natureExposure: 35,
+      purposeClarity: 80
     },
     sustainabilityHours: null
   },
@@ -137,6 +155,8 @@ export const ARCHETYPES: Archetype[] = [
       economicStress: 40,
       physicalMovement: 60,
       syntheticInteraction: 25,
+      natureExposure: 40,
+      purposeClarity: 75
     },
     sustainabilityHours: null
   },
@@ -151,6 +171,8 @@ export const ARCHETYPES: Archetype[] = [
       economicStress: 30,
       physicalMovement: 50,
       syntheticInteraction: 5,
+      natureExposure: 70,
+      purposeClarity: 50
     },
     sustainabilityHours: null
   },
@@ -165,6 +187,8 @@ export const ARCHETYPES: Archetype[] = [
       economicStress: 25,
       physicalMovement: 90,
       syntheticInteraction: 15,
+      natureExposure: 60,
+      purposeClarity: 55
     },
     sustainabilityHours: null
   },
@@ -179,6 +203,8 @@ export const ARCHETYPES: Archetype[] = [
       economicStress: 35,
       physicalMovement: 40,
       syntheticInteraction: 10,
+      natureExposure: 50,
+      purposeClarity: 60
     },
     sustainabilityHours: null
   }

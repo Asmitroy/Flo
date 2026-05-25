@@ -25,6 +25,7 @@ export interface AutopsyReport {
   peaks: { load: number; coherence: number; agency: number; meaning: number };
   troughs: { load: number; coherence: number; agency: number; meaning: number };
   initials: { load: number; coherence: number; agency: number; meaning: number };
+  finals: { load: number; coherence: number; agency: number; meaning: number };
 }
 
 // Target experience durations at SPEED = FAST
@@ -260,6 +261,13 @@ export function useTimeCompression(
 
     const narrative = `${s1} ${s2} ${s3stable} ${s4}`;
 
+    const finals = {
+      load: sliderValues.nervousSystemLoad.get(),
+      coherence: sliderValues.identityCoherence.get(),
+      agency: sliderValues.agencyScore.get(),
+      meaning: sliderValues.meaningScore.get()
+    };
+
     return {
       mode: finalMode,
       fastestDegraded,
@@ -267,7 +275,8 @@ export function useTimeCompression(
       narrative,
       peaks: { ...peaks },
       troughs: { ...troughs },
-      initials: { ...initials }
+      initials: { ...initials },
+      finals
     };
   }, []);
 

@@ -9,6 +9,8 @@ interface ArchetypeSelectorProps {
   economicStress: MotionValue<number>;
   physicalMovement: MotionValue<number>;
   syntheticInteraction: MotionValue<number>;
+  natureExposure: MotionValue<number>;
+  purposeClarity: MotionValue<number>;
   disabled?: boolean;
   onArchetypeSelect?: (name: string) => void;
 }
@@ -79,7 +81,7 @@ const ArchetypeCard = React.memo(({
             {archetype.summary}
           </span>
           
-          {/* Sparkline chart of the 6 values */}
+          {/* Sparkline chart of the 8 values */}
           <div className="flex items-end gap-1 h-3 mt-1.5">
             {Object.entries(archetype.targets).map(([key, val]) => (
               <div key={key} className="flex-1 flex flex-col items-center group/bar relative h-full justify-end">
@@ -120,6 +122,8 @@ export const ArchetypeSelector = React.memo(({
   economicStress,
   physicalMovement,
   syntheticInteraction,
+  natureExposure,
+  purposeClarity,
   disabled = false,
   onArchetypeSelect,
 }: ArchetypeSelectorProps) => {
@@ -149,7 +153,7 @@ export const ArchetypeSelector = React.memo(({
     activeLerpsRef.current.forEach(anim => anim.stop());
     activeLerpsRef.current = [];
 
-    // Trigger smooth 3-second LERP animations for all 6 environment sliders
+    // Trigger smooth 3-second LERP animations for all 8 environment sliders
     const duration = 3;
     const ease = "linear";
 
@@ -159,7 +163,9 @@ export const ArchetypeSelector = React.memo(({
       animate(socialPressure, archetype.targets.socialPressure, { duration, ease }),
       animate(economicStress, archetype.targets.economicStress, { duration, ease }),
       animate(physicalMovement, archetype.targets.physicalMovement, { duration, ease }),
-      animate(syntheticInteraction, archetype.targets.syntheticInteraction, { duration, ease })
+      animate(syntheticInteraction, archetype.targets.syntheticInteraction, { duration, ease }),
+      animate(natureExposure, archetype.targets.natureExposure, { duration, ease }),
+      animate(purposeClarity, archetype.targets.purposeClarity, { duration, ease })
     ];
 
     // Animate local progress state over 3 seconds
@@ -178,7 +184,7 @@ export const ArchetypeSelector = React.memo(({
         }, 400);
       }
     });
-  }, [stimulationLevel, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction, disabled, onArchetypeSelect]);
+  }, [stimulationLevel, sleepDebt, socialPressure, economicStress, physicalMovement, syntheticInteraction, natureExposure, purposeClarity, disabled, onArchetypeSelect]);
 
   useEffect(() => {
     registerSelectArchetype(handleSelect);
@@ -207,29 +213,31 @@ export const ArchetypeSelector = React.memo(({
     if (name === "Recovery Cabin" || name === "Digital Detox") return 5;
 
     const nervousLoad = Math.min(100,
-      targets.stimulation * (1 + targets.sleepDebt / 100 * 0.8));
+      targets.stimulation * (1 + targets.sleepDebt / 100 * 0.8)) * (1 - targets.natureExposure / 100 * 0.15);
     
-    const attention = Math.max(0, 100 - nervousLoad * 0.8);
-    const agency = Math.max(0, 30 + targets.physicalMovement * 0.30
-      - targets.economicStress * 0.30 - targets.sleepDebt * 0.25);
+    const attention = Math.max(0, 100 - nervousLoad);
+    
     const meaning = Math.max(0, 15 + targets.physicalMovement * 0.40
-      - targets.stimulation * 0.25);
+      - targets.stimulation * 0.25 + (100 - targets.syntheticInteraction) * 0.15 - targets.economicStress * 0.15 - targets.sleepDebt * 0.10 + targets.natureExposure * 0.12);
+
+    const agency = Math.max(0, 25 + targets.physicalMovement * 0.55
+      - targets.economicStress * 0.25 - targets.sleepDebt * 0.20 - nervousLoad * 0.08 + meaning * 0.12 + targets.purposeClarity * 0.15);
 
     const inChannel = (
       attention > 75 &&
       agency > 70 &&
-      nervousLoad >= 35 && nervousLoad <= 65 &&
+      nervousLoad >= 15 && nervousLoad <= 65 &&
       meaning > 60 &&
-      targets.socialPressure < 40
+      targets.socialPressure < 40 &&
+      targets.purposeClarity > 55
     );
     if (!inChannel) return 0;
     
-    const depth = Math.min(100, Math.round(
-      ((attention - 75) / 25 * 30) +
-      ((agency - 70) / 30 * 30) +
-      (1 - Math.abs(nervousLoad - 50) / 15) * 40
-    ));
-    return Math.max(0, depth);
+    const attentionContrib = (attention - 35) / 65 * 0.3;
+    const agencyContrib = (agency - 40) / 60 * 0.3;
+    const loadContrib = 1 - Math.abs(nervousLoad - 50) / 15 * 0.4;
+    const baseProb = Math.min(1, Math.max(0, attentionContrib + agencyContrib + loadContrib));
+    return Math.max(0, Math.round(baseProb * 100));
   };
 
   // Split configurations
