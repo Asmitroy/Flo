@@ -9,23 +9,24 @@ import {
   Activity, 
   ShieldAlert, 
   Fingerprint, 
-  Info,
   Terminal,
   Moon,
   TrendingDown,
   Users
 } from 'lucide-react';
-import AttentionGraph from './AttentionGraph';
-import IdentityCore from './IdentityCore';
-import AgencyMeter from './AgencyMeter';
-import ExistentialDepth from './ExistentialDepth';
+// import AttentionGraph from './AttentionGraph';
+// import IdentityCore from './IdentityCore';
+// import AgencyMeter from './AgencyMeter';
+// import ExistentialDepth from './ExistentialDepth';
 import { ArchetypeSelector } from './ArchetypeSelector';
 import { ARCHETYPES } from './ArchetypeEngine';
-import { useNarrativeEvents, DESTABILIZERS } from './NarrativeEventEngine';
+import { useNarrativeEvents, DESTABILIZERS, triggerNarrativeEvent } from './NarrativeEventEngine';
 import { useTimeCompression } from './TimeCompressionEngine';
 import ReflectionModal, { type SystemScores, type SliderSnapshot } from './ReflectionModal';
 import { OnboardingQuestionnaire } from './OnboardingQuestionnaire';
 import { EnvironmentalPrescription } from './EnvironmentalPrescription';
+import { useNavigate, useLocation, Outlet } from 'react-router-dom';
+import { SimulatorContext, type SimulatorState } from './SimulatorContext';
 
 // Eerie glitch glyphs for character substitution
 const GLYPHS = ['█', '░', '▓', '▒', 'Ø', '§', 'Δ', '¥', '0', '1', 'æ', '?', '!', '#', '*', 'α', 'β', 'λ', '†', '‡', 'µ', '¶', '▰', '▱', '◊', '◈'];
@@ -387,16 +388,16 @@ const SimulationSlider = React.memo(({
 
 SimulationSlider.displayName = 'SimulationSlider';
 
-const getWeatherStateForTelemetry = (att: number, nrv: number, agc: number, mng: number, fp: number) => {
-  if (fp > 0.6) return 'flow';
-  if (mng < 20 && agc < 30) return 'void';
-  if (nrv > 70 || att < 40 || agc < 30) return 'storm';
-  if ((nrv >= 30 && nrv <= 70) || (att >= 40 && att <= 70) || (mng >= 30 && mng <= 60)) {
-    return 'overcast';
-  }
-  if (nrv < 30 && att > 70 && mng > 60) return 'clear';
-  return 'overcast';
-};
+// const getWeatherStateForTelemetry = (att: number, nrv: number, agc: number, mng: number, fp: number) => {
+//   if (fp > 0.6) return 'flow';
+//   if (mng < 20 && agc < 30) return 'void';
+//   if (nrv > 70 || att < 40 || agc < 30) return 'storm';
+//   if ((nrv >= 30 && nrv <= 70) || (att >= 40 && att <= 70) || (mng >= 30 && mng <= 60)) {
+//     return 'overcast';
+//   }
+//   if (nrv < 30 && att > 70 && mng > 60) return 'clear';
+//   return 'overcast';
+// };
 
 interface HudTelemetryProps {
   nervousSystemLoad: MotionValue<number>;
@@ -414,6 +415,7 @@ interface HudTelemetryProps {
   socialPressure: MotionValue<number>;
   economicStress: MotionValue<number>;
   physicalMovement: MotionValue<number>;
+  syntheticInteraction: MotionValue<number>;
 }
 
 const HudTelemetry = React.memo(({ 
@@ -426,12 +428,12 @@ const HudTelemetry = React.memo(({
   isRebooting,
   isCompressionActive = false,
   elapsedTime,
-  targetSystemScores,
   sleepDebt,
   stimulationLevel,
   socialPressure,
   economicStress,
-  physicalMovement
+  physicalMovement,
+  syntheticInteraction
 }: HudTelemetryProps) => {
   const [nrvScore, setNrvScore] = useState(nervousSystemLoad.get());
   const [idnScore, setIdnScore] = useState(identityCoherence.get());
@@ -444,18 +446,7 @@ const HudTelemetry = React.memo(({
   const [socialVal, setSocialVal] = useState(socialPressure.get());
   const [economicVal, setEconomicVal] = useState(economicStress.get());
   const [movementVal, setMovementVal] = useState(physicalMovement.get());
-
-  // Track scoring queue to estimate recovery velocity
-  const historyRef = useRef<Record<string, number[]>>({
-    attention: [],
-    nervous: [],
-    identity: [],
-    agency: [],
-    meaning: []
-  });
-
-  const [weatherState, setWeatherState] = useState<string>('');
-  const [stateDuration, setStateDuration] = useState<number>(0);
+  const [synthVal, setSynthVal] = useState(syntheticInteraction.get());
 
   useEffect(() => {
     const unsubNrv = nervousSystemLoad.on("change", (v) => setNrvScore(v));
@@ -469,6 +460,7 @@ const HudTelemetry = React.memo(({
     const unsubSocial = socialPressure.on("change", (v) => setSocialVal(v));
     const unsubEconomic = economicStress.on("change", (v) => setEconomicVal(v));
     const unsubMovement = physicalMovement.on("change", (v) => setMovementVal(v));
+    const unsubSynth = syntheticInteraction.on("change", (v) => setSynthVal(v));
 
     return () => {
       unsubNrv();
@@ -481,181 +473,195 @@ const HudTelemetry = React.memo(({
       unsubSocial();
       unsubEconomic();
       unsubMovement();
+      unsubSynth();
     };
   }, [
     nervousSystemLoad, identityCoherence, agencyScore, meaningScore, flowProbability,
-    sleepDebt, stimulationLevel, socialPressure, economicStress, physicalMovement
+    sleepDebt, stimulationLevel, socialPressure, economicStress, physicalMovement, syntheticInteraction
   ]);
 
   const attScore = 100 - nrvScore;
   const nrvWellness = 100 - nrvScore;
 
-  const systems = [
-    { id: 'attention', label: 'ATTENTION', score: attScore, start: systemStartScores.attention },
-    { id: 'nervous', label: 'NERVOUS SYS', score: nrvWellness, start: systemStartScores.nervous },
-    { id: 'identity', label: 'IDENTITY', score: idnScore, start: systemStartScores.identity },
-    { id: 'agency', label: 'AGENCY', score: agcScore, start: systemStartScores.agency },
-    { id: 'meaning', label: 'MEANING', score: mngScore, start: systemStartScores.meaning },
-  ];
+  // Track scoring history queue to estimate recovery velocity
+  const totalScore = attScore + nrvWellness + idnScore + agcScore + mngScore;
+  const totalScoreHistory = useRef<number[]>([]);
 
-  // Tick the scoring history queue
   useEffect(() => {
-    const sysKeys = ['attention', 'nervous', 'identity', 'agency', 'meaning'] as const;
-    const currentValues = {
-      attention: attScore,
-      nervous: nrvWellness,
-      identity: idnScore,
-      agency: agcScore,
-      meaning: mngScore
-    };
-    sysKeys.forEach(key => {
-      const q = historyRef.current[key];
-      const newVal = currentValues[key];
-      if (q.length === 0 || q[q.length - 1] !== newVal) {
-        q.push(newVal);
-        if (q.length > 5) {
-          q.shift();
-        }
+    const q = totalScoreHistory.current;
+    if (q.length === 0 || q[q.length - 1] !== totalScore) {
+      q.push(totalScore);
+      if (q.length > 11) {
+        q.shift();
       }
-    });
-  }, [attScore, nrvWellness, idnScore, agcScore, mngScore]);
-
-  // Format deltas
-  const renderDelta = (current: number, start: number, id: string) => {
-    const startVal = id === 'nervous' ? (100 - start) : start;
-    const diff = current - startVal;
-    const rounded = Math.round(diff);
-    if (Math.abs(rounded) <= 3) {
-      return <span className="text-zinc-600 text-[8px] font-mono font-normal">{(rounded >= 0 ? `+${rounded}` : `${rounded}`)}</span>;
     }
-    if (rounded > 3) {
-      return <span className="text-emerald-500 font-mono text-[8px] font-bold">+{rounded}</span>;
-    }
-    return <span className="text-red-500 font-mono text-[8px] font-bold">{rounded}</span>;
-  };
+  }, [totalScore]);
 
-  // Find lowest system score for Heuristic Readout text
-  const degraded = [
-    { id: 'attention', score: attScore },
-    { id: 'nervous', score: nrvWellness },
-    { id: 'identity', score: idnScore },
-    { id: 'agency', score: agcScore },
-    { id: 'meaning', score: mngScore }
-  ].filter(s => s.score <= 70);
+  // METRIC 1 — SYSTEM RISK INDEX
+  const riskIndex = (
+    (100 - attScore) * 0.20 +
+    nrvScore * 0.25 +
+    (100 - idnScore) * 0.15 +
+    (100 - agcScore) * 0.20 +
+    (100 - mngScore) * 0.20
+  );
+  const riskIndexVal = Math.round(riskIndex);
+  const riskIndexColor = riskIndexVal < 30 ? "text-emerald-500" : riskIndexVal > 60 ? "text-red-500 font-bold" : "text-amber-500 font-bold";
+  const riskIndexStatus = riskIndex < 20 ? "OPTIMAL CONFIGURATION" : riskIndex <= 40 ? "MANAGEABLE LOAD" : riskIndex <= 65 ? "ELEVATED RISK" : "CRITICAL DEGRADATION";
 
-  let readoutText = "COGNITION NORMAL. Syntactic links at peak density. Letter spacing baseline calibrated.";
-  let readoutColor = "text-zinc-500";
+  // METRIC 2 — COGNITIVE DEBT ACCUMULATION
+  const attentionDebt = Math.max(0, systemStartScores.attention - attScore);
+  const nervousDebt = Math.max(0, nrvScore - systemStartScores.nervous);
+  const identityDebt = Math.max(0, systemStartScores.identity - idnScore);
+  const agencyDebt = Math.max(0, systemStartScores.agency - agcScore);
+  const meaningDebt = Math.max(0, systemStartScores.meaning - mngScore);
 
-  if (degraded.length > 0) {
-    const lowest = [...degraded].sort((a, b) => a.score - b.score)[0];
-    if (lowest.score < 30) {
-      readoutColor = "text-red-400/80 animate-pulse font-bold";
-    } else {
-      readoutColor = "text-amber-400/80";
-    }
+  const cognitiveDebt = attentionDebt + nervousDebt + identityDebt + agencyDebt + meaningDebt;
+  const roundedDebt = Math.round(cognitiveDebt);
+  const debtValue = `+${roundedDebt} units`;
+  const debtStatus = "SESSION DEBT";
+  const debtColor = roundedDebt > 60 ? "text-red-500 font-bold" : roundedDebt > 30 ? "text-amber-500 font-bold" : "text-zinc-300";
 
-    if (lowest.id === 'attention') {
-      readoutText = "Attention fragmentation elevated. Context switching exceeding threshold.";
-    } else if (lowest.id === 'nervous') {
-      readoutText = "Nervous system load critical. Autonomic overdrive active.";
-    } else if (lowest.id === 'identity') {
-      readoutText = "Identity boundary dilation detected. Ego-coherence drifting.";
-    } else if (lowest.id === 'agency') {
-      readoutText = "Initiation failure detected. Motivational substrate depleted.";
-    } else if (lowest.id === 'meaning') {
-      readoutText = "Existential anchoring weak. Purpose signal below coherence threshold.";
-    }
+  // METRIC 3 — RECOVERY VELOCITY
+  let recoveryVelocity = 0;
+  if (totalScoreHistory.current.length >= 2) {
+    const q = totalScoreHistory.current;
+    recoveryVelocity = (q[q.length - 1] - q[0]) / (q.length - 1);
   }
+  const velocityColor = recoveryVelocity >= 0 ? "text-emerald-500" : "text-red-500 font-bold";
+  const velocityValue = recoveryVelocity >= 0 
+    ? `▲ +${recoveryVelocity.toFixed(1)}/tick`
+    : `▼ ${recoveryVelocity.toFixed(1)}/tick`;
+  const velocityStatus = recoveryVelocity >= 0 ? "RECOVERING" : "DEGRADING";
 
-  // 1. SESSION RISK INDICATOR
-  const degradedSystems = [attScore, nrvWellness, idnScore, agcScore, mngScore]
-    .filter(s => s < 40).length;
-  const risk = degradedSystems === 0 ? 'LOW'
-    : degradedSystems === 1 ? 'MODERATE'
-    : degradedSystems === 2 ? 'HIGH'
-    : 'CRITICAL';
-
-  let riskColor = "text-emerald-400 font-bold";
-  if (risk === 'MODERATE') {
-    riskColor = "text-amber-400 font-bold";
-  } else if (risk === 'HIGH') {
-    riskColor = "text-rose-500 font-bold";
-  } else if (risk === 'CRITICAL') {
-    riskColor = "text-rose-500 font-bold animate-pulse";
-  }
-
-  // 2. DOMINANT STRESSOR
-  const stressorContributions = {
+  // METRIC 4 — DOMINANT STRESSOR
+  const stressorImpacts = {
     'SLEEP DEBT': sleepDebtVal * 1.5,
     'STIMULATION': stimulationVal * 1.2,
     'ECONOMIC STRESS': economicVal * 1.0,
     'SOCIAL PRESSURE': socialVal * 0.8,
     'LOW MOVEMENT': (100 - movementVal) * 0.9
   };
-  const sortedContributions = Object.entries(stressorContributions)
-    .sort(([, a], [, b]) => b - a);
-  const primaryStressor = sortedContributions[0][1] > 40 ? sortedContributions[0][0] : 'NONE';
+  const sortedStressors = Object.entries(stressorImpacts).sort(([, a], [, b]) => b - a);
+  const highestStressor = sortedStressors[0];
+  const isStressorActive = highestStressor[1] > 40;
+  const stressorValue = isStressorActive ? highestStressor[0] : 'NONE';
+  const stressorStatus = isStressorActive ? 'DOMINANT STRESSOR ACTIVE' : 'NO DOMINANT STRESSOR';
+  const stressorColor = isStressorActive ? 'text-amber-500' : 'text-emerald-500';
 
-  // 3. RECOVERY VELOCITY
-  const lowestSystemKey = Object.entries({
-    attention: attScore,
-    nervous: nrvWellness,
-    identity: idnScore,
-    agency: agcScore,
-    meaning: mngScore
-  }).sort(([, a], [, b]) => a - b)[0][0] as 'attention' | 'nervous' | 'identity' | 'agency' | 'meaning';
+  // METRIC 5 — FLOW WINDOW STATUS
+  const flowPercentage = Math.round(flowProbVal * 100);
+  const flowValue = `${flowPercentage}%`;
 
-  const lowestHistory = historyRef.current[lowestSystemKey];
-  let rateOfChange = 0;
-  if (lowestHistory.length >= 2) {
-    rateOfChange = (lowestHistory[lowestHistory.length - 1] - lowestHistory[0]) / (lowestHistory.length - 1);
+  const blockers: string[] = [];
+  if (attScore <= 75) {
+    blockers.push(`ATTENTION ${Math.round(attScore)}% (need >75%)`);
+  }
+  if (agcScore <= 70) {
+    blockers.push(`AGENCY ${Math.round(agcScore)}% (need >70%)`);
+  }
+  if (nrvScore < 20 || nrvScore > 65) {
+    blockers.push(`LOAD ${Math.round(nrvScore)}% (need 20-65%)`);
+  }
+  if (mngScore <= 60) {
+    blockers.push(`MEANING ${Math.round(mngScore)}% (need >60%)`);
+  }
+  if (socialVal >= 40) {
+    blockers.push(`SOCIAL PRESSURE ${Math.round(socialVal)}% (need <40%)`);
   }
 
-  const formattedRate = rateOfChange.toFixed(1);
-  const rateText = rateOfChange >= 0 ? `+${formattedRate}/tick` : `${formattedRate}/tick`;
-  const rateColor = rateOfChange >= 0 ? "text-emerald-400" : "text-rose-500 font-bold";
-
-  // 4. TIME IN CURRENT STATE
-  const resolvedWeather = getWeatherStateForTelemetry(attScore, nrvScore, agcScore, mngScore, flowProbVal);
-  const weatherLabelMap: Record<string, string> = {
-    clear: "COGNITIVE CLARITY",
-    overcast: "ELEVATED LOAD",
-    storm: "COGNITIVE STORM",
-    void: "DISSOCIATIVE STATE",
-    flow: "FLOW STATE ACTIVE"
+  const getBlockerPriority = (blockerStr: string) => {
+    if (blockerStr.startsWith("SOCIAL PRESSURE")) return 1;
+    if (blockerStr.startsWith("ATTENTION") || blockerStr.startsWith("AGENCY") || blockerStr.startsWith("MEANING")) return 2;
+    if (blockerStr.startsWith("LOAD")) return 3;
+    return 4;
   };
-  const weatherLabel = weatherLabelMap[resolvedWeather] || "UNKNOWN";
 
-  useEffect(() => {
-    setStateDuration(0);
-    setWeatherState(weatherLabel);
-  }, [weatherLabel]);
+  blockers.sort((a, b) => getBlockerPriority(a) - getBlockerPriority(b));
+  const topBlocker = blockers[0] ?? null;
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setStateDuration(prev => prev + 1);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
+  let flowStatus = '';
+  let flowColor = '';
+  if (flowPercentage === 0) {
+    if (topBlocker) {
+      flowStatus = `BLOCKED BY: ${topBlocker}`;
+    } else {
+      flowStatus = 'FLOW UNAVAILABLE — recovery required first';
+    }
+    flowColor = 'text-red-500 animate-pulse';
+  } else if (flowPercentage > 60) {
+    flowStatus = 'FLOW ACTIVE — sustain current configuration';
+    flowColor = 'text-[#F5C842]';
+  } else if (flowPercentage >= 30) {
+    flowStatus = 'FLOW ADJACENT — 2-3 adjustments needed';
+    flowColor = 'text-amber-500';
+  } else if (flowPercentage >= 10) {
+    flowStatus = 'FLOW DISTANT — environment incompatible';
+    flowColor = 'text-red-500';
+  } else {
+    flowStatus = 'FLOW UNAVAILABLE — recovery required first';
+    flowColor = 'text-red-500 animate-pulse';
+  }
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}m ${secs}s`;
-  };
+  // METRIC 6 — SUSTAINABILITY ESTIMATE
+  const isAnyCritical = attScore < 30 || nrvScore > 70 || idnScore < 30 || agcScore < 30 || mngScore < 30;
+  let runwayValue = '';
+  let runwayStatus = '';
+  let runwayColor = '';
+  if (isAnyCritical) {
+    runwayValue = 'PAST THRESHOLD';
+    runwayStatus = 'reconfiguration required';
+    runwayColor = 'text-red-500 font-bold animate-pulse';
+  } else {
+    const rates = {
+      attention: (stimulationVal * 0.3 + sleepDebtVal * 0.2) / 20,
+      nervous: (stimulationVal * 0.25 + sleepDebtVal * 0.3 + economicVal * 0.15) / 20,
+      agency: (economicVal * 0.3 + sleepDebtVal * 0.25 + nrvScore * 0.15) / 20,
+      meaning: (stimulationVal * 0.25 + (100 - movementVal) * 0.4) / 20,
+      identity: synthVal / 20
+    };
+
+    const ratesList = [
+      { id: 'attention', current: attScore, rate: rates.attention, isInverted: false },
+      { id: 'nervous', current: nrvScore, rate: rates.nervous, isInverted: true },
+      { id: 'identity', current: idnScore, rate: rates.identity, isInverted: false },
+      { id: 'agency', current: agcScore, rate: rates.agency, isInverted: false },
+      { id: 'meaning', current: mngScore, rate: rates.meaning, isInverted: false }
+    ];
+
+    const runways = ratesList
+      .filter(item => item.rate > 0)
+      .map(item => {
+        if (item.isInverted) {
+          return (70 - item.current) / item.rate;
+        } else {
+          return (item.current - 30) / item.rate;
+        }
+      });
+
+    if (runways.length === 0) {
+      runwayValue = 'SUSTAINABLE';
+      runwayStatus = 'no critical threshold projected';
+      runwayColor = 'text-emerald-500';
+    } else {
+      const shortestRunway = Math.min(...runways);
+      runwayValue = `~${shortestRunway.toFixed(1)} days`;
+      runwayStatus = 'ESTIMATED RUNWAY — at current load';
+      runwayColor = shortestRunway < 3 ? 'text-red-500 font-bold' : shortestRunway < 7 ? 'text-amber-500' : 'text-zinc-300';
+    }
+  }
 
   return (
     <section className="lg:col-span-1 bg-zinc-950/40 border border-zinc-900/60 rounded-lg p-5 backdrop-blur-lg flex flex-col justify-between select-none">
       <div>
         <div className="flex items-center space-x-2 mb-6 border-b border-zinc-900 pb-2">
-          <Cpu className="w-4 h-4 text-zinc-500" />
           <h3 className="font-display text-[11px] uppercase tracking-wider text-zinc-400 font-bold">
-            LIVE SYSTEM STATUS
+            COGNITIVE DASHBOARD
           </h3>
         </div>
 
         {isCompressionActive && elapsedTime && (
-          <div className="mb-4 bg-zinc-950 border border-zinc-900/60 p-2.5 text-center select-none animate-pulse">
+          <div className="mb-6 bg-zinc-950 border border-zinc-900/60 p-2.5 text-center animate-pulse">
             <span className="font-mono text-[9px] text-zinc-500 tracking-widest uppercase">
               COMPRESSION STATUS
             </span>
@@ -665,139 +671,72 @@ const HudTelemetry = React.memo(({
           </div>
         )}
 
-        <div className="space-y-4">
-          {systems.map((sys) => {
-            const isCrit = sys.score < 30;
-            const isDeg = sys.score >= 30 && sys.score <= 70;
-
-            let displayTargetScore: number | null = null;
-            if (targetSystemScores) {
-              if (sys.id === 'nervous') {
-                displayTargetScore = 100 - targetSystemScores.nervous;
-              } else {
-                displayTargetScore = targetSystemScores[sys.id as keyof SystemScores] ?? null;
-              }
-            }
-
-            return (
-              <div key={sys.id}>
-                <div className="flex justify-between text-[10px] font-mono text-zinc-500 mb-1">
-                  <span>{sys.label}</span>
-                  <div className="flex items-center space-x-1">
-                    <span className={isCrit ? 'text-rose-500 font-bold animate-pulse' : (isDeg ? 'text-orange-400 font-bold' : 'text-zinc-300')}>
-                      {isRebooting ? "..." : `${Math.round(sys.score)}%`}
-                    </span>
-                    {!isRebooting && renderDelta(sys.score, sys.start, sys.id)}
-                  </div>
-                </div>
-                <div className="relative w-full bg-zinc-900/60 h-1.5 rounded overflow-hidden">
-                  <motion.div 
-                     className="h-full rounded"
-                    animate={{ width: `${Math.max(2, sys.score)}%` }}
-                    transition={{ duration: 0.3 }}
-                    style={{ backgroundColor: isCrit ? '#e11d48' : (isDeg ? '#d97706' : '#e4e4e7') }}
-                  />
-                  {displayTargetScore !== null && (
-                    <div 
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        bottom: 0,
-                        left: `${displayTargetScore}%`,
-                        width: '2px',
-                        borderLeft: '2px dotted rgba(245, 200, 66, 0.75)',
-                        transform: 'translateX(-50%)',
-                        zIndex: 1,
-                      }}
-                      title={`Target: ${Math.round(displayTargetScore)}%`}
-                    />
-                  )}
-                </div>
-              </div>
-            );
-          })}
-
-          {/* FLOW PROBABILITY Indicator */}
-          <div className="pt-2.5 border-t border-zinc-900/60 mt-3.5">
-            <div className="flex justify-between text-[10px] font-mono text-zinc-500 mb-1">
-              <span>FLOW PROBABILITY</span>
-              <span className={flowProbVal > 0.6 ? 'text-[#F5C842] font-bold' : 'text-zinc-300'}>
-                {isRebooting ? "0%" : `${Math.round(flowProbVal * 100)}%`}
-              </span>
-            </div>
-            <div className="w-full bg-zinc-900/60 h-1.5 rounded overflow-hidden">
-              <motion.div 
-                className="h-full rounded"
-                animate={{ width: `${Math.max(2, isRebooting ? 0 : flowProbVal * 100)}%` }}
-                transition={{ duration: 0.3 }}
-                style={{ backgroundColor: '#F5C842' }}
-              />
-            </div>
+        <div className="space-y-6">
+          {/* METRIC 1 — SYSTEM RISK INDEX */}
+          <div className="flex flex-col">
+            <span className="font-mono text-[9px] text-zinc-400 opacity-30 tracking-wider">SYSTEM RISK INDEX</span>
+            <span className={`text-[18px] font-bold mt-0.5 ${riskIndexColor}`}>
+              {isRebooting ? "..." : riskIndexVal}
+            </span>
+            <span className="text-[11px] text-zinc-400 mt-0.5 uppercase tracking-wide">
+              {isRebooting ? "INITIALIZING..." : riskIndexStatus}
+            </span>
           </div>
 
-          <div className="pt-2 border-t border-zinc-900/40 mt-3 pb-2">
-            <AgencyMeter agencyScore={agencyScore} />
+          {/* METRIC 2 — COGNITIVE DEBT ACCUMULATION */}
+          <div className="flex flex-col">
+            <span className="font-mono text-[9px] text-zinc-400 opacity-30 tracking-wider">COGNITIVE DEBT ACCUMULATION</span>
+            <span className={`text-[18px] font-bold mt-0.5 ${debtColor}`}>
+              {isRebooting ? "..." : debtValue}
+            </span>
+            <span className="text-[11px] text-zinc-400 mt-0.5 uppercase tracking-wide">
+              {isRebooting ? "INITIALIZING..." : debtStatus}
+            </span>
           </div>
 
-          {/* ENHANCED SYSTEMS ANALYSIS PANEL */}
-          <div className="pt-2">
-            <div className="bg-black/40 border border-zinc-900 rounded p-3 text-[10px] font-mono space-y-2.5 leading-relaxed text-zinc-500">
-              <div className="flex items-center space-x-1.5 text-zinc-400 border-b border-zinc-900 pb-1.5">
-                <Info className="w-3 h-3 text-indigo-400" />
-                <span className="font-bold uppercase tracking-wider text-[9px]">SYSTEMS ANALYSIS</span>
-              </div>
-
-              {/* SESSION RISK INDICATOR */}
-              <div className="flex justify-between items-center text-[9px]">
-                <span>SESSION RISK</span>
-                <span className={`font-mono text-[9px] uppercase ${riskColor}`}>
-                  {risk}
-                </span>
-              </div>
-
-              {/* DOMINANT STRESSOR */}
-              <div className="flex justify-between items-center text-[9px]">
-                <span>PRIMARY STRESSOR</span>
-                <span className="font-bold text-zinc-300">
-                  {primaryStressor}
-                </span>
-              </div>
-
-              {/* RECOVERY VELOCITY */}
-              <div className="flex justify-between items-center text-[9px]">
-                <span>{rateOfChange >= 0 ? "RECOVERY RATE" : "DEGRADATION"}</span>
-                <span className={`font-mono text-[9px] ${rateColor}`}>
-                  {rateText}
-                </span>
-              </div>
-
-              {/* TIME IN CURRENT STATE */}
-              <div className="flex justify-between items-center text-[9px]">
-                <span>STATE DURATION</span>
-                <span className="font-bold text-zinc-300 text-right">
-                  {formatDuration(stateDuration)} <span className="text-[8px] text-zinc-500 font-normal">in</span> <span className={resolvedWeather === 'storm' || resolvedWeather === 'void' ? 'text-rose-400 font-semibold' : resolvedWeather === 'flow' ? 'text-[#F5C842] font-semibold' : 'text-zinc-300'}>{weatherState}</span>
-                </span>
-              </div>
-
-              {/* Status Analysis details (Heuristic Readout Merged) */}
-              <div className="pt-2 border-t border-zinc-900/50">
-                <p className={readoutColor}>
-                  {isRebooting ? "REBOOTING..." : readoutText}
-                </p>
-              </div>
-            </div>
+          {/* METRIC 3 — RECOVERY VELOCITY */}
+          <div className="flex flex-col">
+            <span className="font-mono text-[9px] text-zinc-400 opacity-30 tracking-wider">RECOVERY VELOCITY</span>
+            <span className={`text-[18px] font-bold mt-0.5 ${velocityColor}`}>
+              {isRebooting ? "..." : velocityValue}
+            </span>
+            <span className="text-[11px] text-zinc-400 mt-0.5 uppercase tracking-wide">
+              {isRebooting ? "INITIALIZING..." : velocityStatus}
+            </span>
           </div>
-        </div>
-      </div>
 
-      <div className="border-t border-zinc-900/60 pt-4 mt-6 flex flex-col space-y-2">
-        <div className="flex justify-between text-[10px] font-mono text-zinc-500">
-          <span>TRUE LOAD:</span>
-          <span className="text-zinc-300 font-bold">{isRebooting ? "0%" : `${Math.round(nrvScore)}%`}</span>
-        </div>
-        <div className="flex items-center space-x-2 text-[9px] font-mono text-zinc-700">
-          <Fingerprint className="w-3.5 h-3.5" />
-          <span className="uppercase">Identity anchor v8.2</span>
+          {/* METRIC 4 — DOMINANT STRESSOR */}
+          <div className="flex flex-col">
+            <span className="font-mono text-[9px] text-zinc-400 opacity-30 tracking-wider">DOMINANT STRESSOR</span>
+            <span className={`text-[18px] font-bold mt-0.5 ${stressorColor}`}>
+              {isRebooting ? "..." : stressorValue}
+            </span>
+            <span className="text-[11px] text-zinc-400 mt-0.5 uppercase tracking-wide">
+              {isRebooting ? "INITIALIZING..." : stressorStatus}
+            </span>
+          </div>
+
+          {/* METRIC 5 — FLOW WINDOW STATUS */}
+          <div className="flex flex-col">
+            <span className="font-mono text-[9px] text-zinc-400 opacity-30 tracking-wider">FLOW WINDOW STATUS</span>
+            <span className={`text-[18px] font-bold mt-0.5 ${flowColor}`}>
+              {isRebooting ? "..." : flowValue}
+            </span>
+            <span className="text-[11px] text-zinc-400 mt-0.5 uppercase tracking-wide">
+              {isRebooting ? "INITIALIZING..." : flowStatus}
+            </span>
+          </div>
+
+          {/* METRIC 6 — SUSTAINABILITY ESTIMATE */}
+          <div className="flex flex-col">
+            <span className="font-mono text-[9px] text-zinc-400 opacity-30 tracking-wider">SUSTAINABILITY ESTIMATE</span>
+            <span className={`text-[18px] font-bold mt-0.5 ${runwayColor}`}>
+              {isRebooting ? "..." : runwayValue}
+            </span>
+            <span className="text-[11px] text-zinc-400 mt-0.5 uppercase tracking-wide">
+              {isRebooting ? "INITIALIZING..." : runwayStatus}
+            </span>
+          </div>
         </div>
       </div>
     </section>
@@ -1203,7 +1142,7 @@ interface RealtimeLogsProps {
 const RealtimeLogs = React.memo(({ logs, nervousSystemLoad, meaningScore, isRebooting }: RealtimeLogsProps) => {
   const [currentLoad, setCurrentLoad] = useState(nervousSystemLoad.get());
   const [currentMeaning, setCurrentMeaning] = useState(meaningScore.get());
-  const [viewMode, setViewMode] = useState<'console' | 'attention'>('console');
+  const meaningStartRef = useRef(meaningScore.get());
 
   useEffect(() => {
     const unsub = nervousSystemLoad.on("change", (v) => setCurrentLoad(v));
@@ -1215,70 +1154,78 @@ const RealtimeLogs = React.memo(({ logs, nervousSystemLoad, meaningScore, isRebo
     return () => unsub();
   }, [meaningScore]);
 
+  const meaningStatus = currentMeaning > 60 ? 'GROUNDED' : currentMeaning > 30 ? 'DRIFTING' : 'VOID';
+  const meaningColor = currentMeaning > 60 ? 'text-amber-500' : currentMeaning > 30 ? 'text-zinc-400' : 'text-red-500';
+  const meaningDelta = Math.round(currentMeaning - meaningStartRef.current);
+  const trendArrow = meaningDelta > 0 ? '↑' : meaningDelta < 0 ? '↓' : '→';
+
   return (
     <section className="lg:col-span-1 bg-zinc-950/40 border border-zinc-900/60 rounded-lg p-4 backdrop-blur-lg flex flex-col justify-between select-none h-full min-h-[640px]">
       <div className="flex flex-col h-full space-y-4 overflow-hidden">
-        {/* Top: Existential Depth */}
-        <div className="border-b border-zinc-900/60 pb-3 flex flex-col items-center">
-          <ExistentialDepth meaningScore={currentMeaning} />
+        {/* Top: Meaning Status (replaces ExistentialDepth SVG) */}
+        <div className="border-b border-zinc-900/60 pb-3">
+          <div className="font-mono text-[10px] space-y-1.5 text-center">
+            <div className="flex items-center justify-center space-x-2">
+              <span className="text-zinc-600 uppercase tracking-widest font-bold">MEANING:</span>
+              <span className={`font-bold ${meaningColor}`}>{Math.round(currentMeaning)}%</span>
+            </div>
+            <div className="flex items-center justify-center space-x-2">
+              <span className="text-zinc-600 uppercase tracking-widest font-bold">STATUS:</span>
+              <span className={`font-bold ${meaningColor}`}>{meaningStatus}</span>
+            </div>
+            <div className="flex items-center justify-center space-x-2">
+              <span className="text-zinc-600 uppercase tracking-widest font-bold">TREND:</span>
+              <span className={`font-bold ${meaningDelta < 0 ? 'text-red-500' : meaningDelta > 0 ? 'text-emerald-500' : 'text-zinc-500'}`}>
+                {trendArrow} {meaningDelta > 0 ? '+' : ''}{meaningDelta} this session
+              </span>
+            </div>
+          </div>
         </div>
 
-        {/* Bottom: Console Monitor or Attention Map */}
+        {/* Console Monitor — fixed height, scrollable */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex items-center justify-between mb-2 border-b border-zinc-900 pb-2">
             <div className="flex items-center space-x-2">
               <Terminal className="w-3.5 h-3.5 text-zinc-500" />
               <h3 className="font-display text-[10px] uppercase tracking-wider text-zinc-400 font-bold">
-                {viewMode === 'console' ? 'Console Monitor' : 'Attention Map'}
+                Console Monitor
               </h3>
             </div>
-            <button
-              onClick={() => setViewMode(prev => prev === 'console' ? 'attention' : 'console')}
-              className="px-2 py-0.5 border border-zinc-800 hover:border-zinc-500 text-[8px] font-mono text-zinc-400 hover:text-zinc-200 transition-colors uppercase cursor-pointer"
-            >
-              {viewMode === 'console' ? '[ ATTENTION MAP ]' : '[ CONSOLE ]'}
-            </button>
           </div>
 
-          {viewMode === 'console' ? (
-            <div className="flex-1 font-mono text-[11px] space-y-2 overflow-hidden overflow-x-hidden">
-              <AnimatePresence initial={false}>
-                {logs.map((log) => {
-                  let textCol = "text-zinc-500";
-                  if (log.type === "success") textCol = "text-emerald-500/80";
-                  else if (log.type === "warn") textCol = "text-amber-500/80";
-                  else if (log.type === "crit") textCol = "text-rose-500/95 font-bold animate-pulse";
-                  else if (log.type === "system") textCol = "text-indigo-400/80";
+          <div className="flex-1 font-mono text-[11px] space-y-2 overflow-y-auto overflow-x-hidden" style={{ maxHeight: '280px' }}>
+            <AnimatePresence initial={false}>
+              {logs.map((log) => {
+                let textCol = "text-zinc-500";
+                if (log.type === "success") textCol = "text-emerald-500/80";
+                else if (log.type === "warn") textCol = "text-amber-500/80";
+                else if (log.type === "crit") textCol = "text-rose-500/95 font-bold animate-pulse";
+                else if (log.type === "system") textCol = "text-indigo-400/80";
 
-                  let logText = log.text;
-                  if (currentLoad > 50 && log.type !== "crit" && !isRebooting) {
-                    logText = log.text.split("").map((c) => {
-                      if (Math.random() < (currentLoad - 50) / 100 * 0.4) {
-                        return GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
-                      }
-                      return c;
-                    }).join("");
-                  }
+                let logText = log.text;
+                if (currentLoad > 50 && log.type !== "crit" && !isRebooting) {
+                  logText = log.text.split("").map((c) => {
+                    if (Math.random() < (currentLoad - 50) / 100 * 0.4) {
+                      return GLYPHS[Math.floor(Math.random() * GLYPHS.length)];
+                    }
+                    return c;
+                  }).join("");
+                }
 
-                  return (
-                    <motion.div
-                      key={log.id}
-                      initial={{ opacity: 0, x: 10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0 }}
-                      className={`${textCol} console-monitor-entry leading-normal`}
-                    >
-                      &gt; {logText}
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
-            </div>
-          ) : (
-            <div className="flex-1 flex items-center justify-center p-2 overflow-hidden">
-              <AttentionGraph load={nervousSystemLoad} />
-            </div>
-          )}
+                return (
+                  <motion.div
+                    key={log.id}
+                    initial={{ opacity: 0, x: 10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0 }}
+                    className={`${textCol} console-monitor-entry leading-normal`}
+                  >
+                    &gt; {logText}
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
 
@@ -1297,6 +1244,9 @@ RealtimeLogs.displayName = 'RealtimeLogs';
 
 interface HeaderStatusProps {
   nervousSystemLoad: MotionValue<number>;
+  identityCoherence: MotionValue<number>;
+  agencyScore: MotionValue<number>;
+  meaningScore: MotionValue<number>;
   isRebooting: boolean;
   isMuted: boolean;
   setIsMuted: (muted: boolean) => void;
@@ -1307,12 +1257,17 @@ interface HeaderStatusProps {
   onRecalibrate: () => void;
   profileLoaded: boolean;
   sustainabilityLabel?: string | null;
+  sustainabilityColor?: string;
   currentNearestArchetype: string;
   transitionProtocolActive: boolean;
+  onDeepAnalysis: () => void;
 }
 
 const HeaderStatus = React.memo(({
   nervousSystemLoad,
+  identityCoherence,
+  agencyScore,
+  meaningScore,
   isRebooting,
   isMuted,
   setIsMuted,
@@ -1323,8 +1278,10 @@ const HeaderStatus = React.memo(({
   onRecalibrate,
   profileLoaded,
   sustainabilityLabel,
+  sustainabilityColor,
   currentNearestArchetype,
   transitionProtocolActive,
+  onDeepAnalysis,
 }: HeaderStatusProps) => {
   const durationLabel = React.useMemo(() => {
     const m = Math.floor(sessionDuration / 60);
@@ -1334,17 +1291,23 @@ const HeaderStatus = React.memo(({
   const statusTextRef = useRef<HTMLSpanElement>(null);
   const statusIndicatorRef = useRef<HTMLDivElement>(null);
   
+  const [nrvVal, setNrvVal] = useState(nervousSystemLoad.get());
+  const [idnVal, setIdnVal] = useState(identityCoherence.get());
+  const [agcVal, setAgcVal] = useState(agencyScore.get());
+  const [mngVal, setMngVal] = useState(meaningScore.get());
+
   useEffect(() => {
-    const unsub = nervousSystemLoad.on("change", (latest) => {
+    const unsubNrv = nervousSystemLoad.on("change", (v) => {
+      setNrvVal(v);
       const textEl = statusTextRef.current;
       const indicatorEl = statusIndicatorRef.current;
       if (!textEl || !indicatorEl) return;
 
-      if (latest > 75) {
+      if (v > 75) {
         textEl.textContent = 'CRITICAL DISSOCIATION';
         textEl.className = 'font-bold text-red-500 animate-pulse';
         indicatorEl.className = 'p-1.5 rounded-full border bg-rose-500/10 border-rose-500/40 text-rose-400';
-      } else if (latest > 45) {
+      } else if (v > 45) {
         textEl.textContent = 'MEMETIC DEVIATION';
         textEl.className = 'font-bold text-amber-500';
         indicatorEl.className = 'p-1.5 rounded-full border bg-indigo-500/10 border-indigo-500/30 text-indigo-400';
@@ -1354,9 +1317,23 @@ const HeaderStatus = React.memo(({
         indicatorEl.className = 'p-1.5 rounded-full border bg-indigo-500/10 border-indigo-500/30 text-indigo-400';
       }
     });
+    const unsubIdn = identityCoherence.on("change", (v) => setIdnVal(v));
+    const unsubAgc = agencyScore.on("change", (v) => setAgcVal(v));
+    const unsubMng = meaningScore.on("change", (v) => setMngVal(v));
 
-    return () => unsub();
-  }, [nervousSystemLoad]);
+    return () => {
+      unsubNrv();
+      unsubIdn();
+      unsubAgc();
+      unsubMng();
+    };
+  }, [nervousSystemLoad, identityCoherence, agencyScore, meaningScore]);
+
+  const getScoreColorClass = (score: number) => {
+    if (score < 30) return 'text-red-500 font-bold animate-pulse';
+    if (score < 70) return 'text-amber-500 font-bold';
+    return 'text-zinc-300 font-bold';
+  };
 
   return (
     <header className="relative w-full z-20 border-b border-zinc-900 bg-[#030303]/60 backdrop-blur-md px-6 py-4 flex items-center justify-between">
@@ -1383,6 +1360,40 @@ const HeaderStatus = React.memo(({
         )}
       </div>
 
+      {/* Compact Status Strip */}
+      <div className="hidden lg:flex items-center space-x-5 border-l border-r border-zinc-900/60 px-6 py-1 font-mono text-[10px] text-zinc-500 select-none">
+        <div className="flex items-center space-x-1.5">
+          <span>ATN</span>
+          <span className={getScoreColorClass(Math.round(100 - nrvVal))}>
+            {isRebooting ? '...' : `${Math.round(100 - nrvVal)}%`}
+          </span>
+        </div>
+        <div className="flex items-center space-x-1.5">
+          <span>NRV</span>
+          <span className={getScoreColorClass(Math.round(100 - nrvVal))}>
+            {isRebooting ? '...' : `${Math.round(100 - nrvVal)}%`}
+          </span>
+        </div>
+        <div className="flex items-center space-x-1.5">
+          <span>IDN</span>
+          <span className={getScoreColorClass(Math.round(idnVal))}>
+            {isRebooting ? '...' : `${Math.round(idnVal)}%`}
+          </span>
+        </div>
+        <div className="flex items-center space-x-1.5">
+          <span>AGC</span>
+          <span className={getScoreColorClass(Math.round(agcVal))}>
+            {isRebooting ? '...' : `${Math.round(agcVal)}%`}
+          </span>
+        </div>
+        <div className="flex items-center space-x-1.5">
+          <span>MNG</span>
+          <span className={getScoreColorClass(Math.round(mngVal))}>
+            {isRebooting ? '...' : `${Math.round(mngVal)}%`}
+          </span>
+        </div>
+      </div>
+
       <div className="flex items-center space-x-6">
         <div className="hidden md:flex flex-col text-right font-mono text-[10px]">
           <span className="text-zinc-650 uppercase font-bold">CURRENT</span>
@@ -1402,7 +1413,7 @@ const HeaderStatus = React.memo(({
         {sustainabilityLabel && (
           <div className="hidden md:flex flex-col text-right font-mono text-[10px] border-r border-zinc-900/60 pr-6 mr-1">
             <span className="text-zinc-650 uppercase">FLOW WINDOW</span>
-            <span className="font-bold text-amber-500 animate-pulse uppercase">
+            <span className={`font-bold animate-pulse uppercase ${sustainabilityColor || 'text-amber-500'}`}>
               {sustainabilityLabel.replace("FLOW WINDOW: ", "")}
             </span>
           </div>
@@ -1434,6 +1445,14 @@ const HeaderStatus = React.memo(({
             title={canRunAnalysis ? 'Open Reflection Report' : 'Run simulation for 60s to enable'}
           >
             {canRunAnalysis ? 'Run Analysis' : `Analysis (${Math.max(0, 60 - sessionDuration)}s)`}
+          </button>
+
+          {/* Deep Analysis Button */}
+          <button
+            onClick={onDeepAnalysis}
+            className="font-mono text-xs tracking-widest opacity-60 hover:opacity-100 text-zinc-300 transition-opacity flex items-center cursor-pointer ml-2 px-1"
+          >
+            DEEP ANALYSIS →
           </button>
 
           <button
@@ -1480,6 +1499,11 @@ const getSimulatedHours = (time: any) => {
 };
 
 export default function CognitiveSimulator() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isAnalysis = location.pathname === '/analysis';
+  const [analysisSnapshot, setAnalysisSnapshot] = useState<SimulatorState | null>(null);
+
   // useMotionValue core engine states bypass React render cycle completely
   const stimulationLevel = useMotionValue<number>(1);
   const sleepDebt = useMotionValue<number>(0);
@@ -1495,11 +1519,13 @@ export default function CognitiveSimulator() {
 
   // States and refs needed by transforms declared early to avoid Temporal Dead Zone (TDZ)
   const [activeArchetype, setActiveArchetype] = useState<string | null>(null);
-  const [flowWindowHoursRemaining, setFlowWindowHoursRemaining] = useState<number | null>(null);
+  const [flowWindowElapsed, setFlowWindowElapsed] = useState(0);
+  const [flowWindowActive, setFlowWindowActive] = useState(false);
   const [sustainabilityExhausted, setSustainabilityExhausted] = useState<boolean>(false);
 
   const activeArchetypeRef = useRef<string | null>(null);
-  const flowWindowHoursRemainingRef = useRef<number | null>(null);
+  const flowWindowElapsedRef = useRef<number>(0);
+  const flowWindowActiveRef = useRef<boolean>(false);
   const sustainabilityExhaustedRef = useRef<boolean>(false);
   const prevSimulatedHoursRef = useRef<number | null>(null);
   const isCompressionActiveRef = useRef<boolean>(false);
@@ -1507,7 +1533,8 @@ export default function CognitiveSimulator() {
 
   // Sync refs to state updates
   activeArchetypeRef.current = activeArchetype;
-  flowWindowHoursRemainingRef.current = flowWindowHoursRemaining;
+  flowWindowElapsedRef.current = flowWindowElapsed;
+  flowWindowActiveRef.current = flowWindowActive;
   sustainabilityExhaustedRef.current = sustainabilityExhausted;
 
   const [transitionProtocolActive, setTransitionProtocolActive] = useState<boolean>(false);
@@ -1571,10 +1598,11 @@ export default function CognitiveSimulator() {
       }
 
       const inFlowChannel = (
-        att > 35 && // derived from load <= 65
-        agency > 40 &&
-        load >= 35 && load <= 65 &&
-        meaning > 45 &&
+        att > 75 &&
+        agency > 70 &&
+        load >= 15 &&
+        load <= 65 &&
+        meaning > 60 &&
         social < 40
       );
 
@@ -1584,13 +1612,22 @@ export default function CognitiveSimulator() {
       const attentionContrib = (att - 35) / 65 * 0.3;
       const agencyContrib = (agency - 40) / 60 * 0.3;
       const loadContrib = 1 - Math.abs(load - 50) / 15 * 0.4;
-      const baseProb = Math.min(1, Math.max(0, attentionContrib + agencyContrib + loadContrib));
+      let baseProb = Math.min(1, Math.max(0, attentionContrib + agencyContrib + loadContrib));
 
-      // Scale down with depletion factor in Deep Flow
+      // Apply capping rules in Deep Flow based on seconds elapsed
       if (activeArchetypeRef.current === "Deep Flow") {
-        const remaining = flowWindowHoursRemainingRef.current ?? 2.0;
-        const depletionFactor = Math.max(0, Math.min(1, remaining / 0.5));
-        return baseProb * depletionFactor;
+        const elapsed = flowWindowElapsedRef.current;
+        const pct = (elapsed / 7200) * 100;
+        
+        if (pct >= 100) {
+          return 0;
+        }
+        
+        if (pct > 75) {
+          const capPct = 60 - ((pct - 75) / 25 * 60);
+          const capVal = capPct / 100;
+          baseProb = Math.min(baseProb, capVal);
+        }
       }
 
       return baseProb;
@@ -1613,33 +1650,51 @@ export default function CognitiveSimulator() {
   const [showReflection, setShowReflection] = useState<boolean>(false);
 
   useEffect(() => {
-    if (activeArchetype === "Deep Flow") {
-      setFlowWindowHoursRemaining(2.0);
-      flowWindowHoursRemainingRef.current = 2.0;
-      setSustainabilityExhausted(false);
-      sustainabilityExhaustedRef.current = false;
-    } else {
-      setFlowWindowHoursRemaining(null);
-      flowWindowHoursRemainingRef.current = null;
+    if (activeArchetype !== "Deep Flow") {
+      setFlowWindowActive(false);
+      flowWindowActiveRef.current = false;
+      setFlowWindowElapsed(0);
+      flowWindowElapsedRef.current = 0;
       setSustainabilityExhausted(false);
       sustainabilityExhaustedRef.current = false;
     }
     prevSimulatedHoursRef.current = null;
   }, [activeArchetype]);
 
-  const formatRemainingTime = (hoursDecimal: number) => {
-    const totalMinutes = Math.round(hoursDecimal * 60);
-    const h = Math.floor(totalMinutes / 60);
-    const m = totalMinutes % 60;
-    return `${h}h ${m}m remaining`;
-  };
-
   const sustainabilityLabel = useMemo(() => {
-    if (activeArchetype === "Deep Flow" && flowWindowHoursRemaining !== null) {
-      return `FLOW WINDOW: ${formatRemainingTime(flowWindowHoursRemaining)}`;
+    if (activeArchetype === "Deep Flow") {
+      if (sustainabilityExhausted) {
+        return "FLOW WINDOW: COLLAPSED — recovery required";
+      }
+      if (flowWindowActive) {
+        const remainingSeconds = Math.max(0, 7200 - flowWindowElapsed);
+        const totalMinutes = Math.round(remainingSeconds / 60);
+        const h = Math.floor(totalMinutes / 60);
+        const m = totalMinutes % 60;
+        const countdownStr = `${h}h ${m}m remaining`;
+        
+        const pct = (flowWindowElapsed / 7200) * 100;
+        if (pct > 75) {
+          return `FLOW WINDOW: DEPLETING — ${countdownStr}`;
+        }
+        if (pct >= 50) {
+          return `FLOW WINDOW: DIMINISHING — ${countdownStr}`;
+        }
+        return `FLOW WINDOW: ACTIVE — ${countdownStr}`;
+      }
     }
     return null;
-  }, [activeArchetype, flowWindowHoursRemaining]);
+  }, [activeArchetype, flowWindowActive, flowWindowElapsed, sustainabilityExhausted]);
+
+  const sustainabilityColor = useMemo(() => {
+    if (activeArchetype !== "Deep Flow") return 'text-zinc-500';
+    if (sustainabilityExhausted) return 'text-red-500 font-bold';
+    
+    const pct = (flowWindowElapsed / 7200) * 100;
+    if (pct > 75) return 'text-red-500 font-bold';
+    if (pct >= 50) return 'text-amber-500 font-bold';
+    return 'text-emerald-500 font-bold';
+  }, [activeArchetype, flowWindowElapsed, sustainabilityExhausted]);
 
   const targetSystemScores = useMemo(() => {
     if (!transitionProtocolActive || !transitionTargetArchetypeId) return null;
@@ -1647,15 +1702,24 @@ export default function CognitiveSimulator() {
     if (!arch) return null;
 
     const t = arch.targets;
-    const targetLoad = Math.min(100, t.stimulation * (1 + (t.sleepDebt * 0.015)));
+    const targetLoad = Math.min(100, t.stimulation * (1 + (t.sleepDebt / 100 * 0.8)));
     const targetCoherence = Math.max(0, 100 - t.syntheticInteraction);
 
+    const previewMeaning = Math.max(0, Math.min(100,
+      15
+      + (t.physicalMovement * 0.40)
+      - (t.stimulation * 0.25)
+      + (100 - t.syntheticInteraction) * 0.15
+      - (t.economicStress * 0.15)
+      - (t.sleepDebt * 0.10)
+    ));
     let targetAgency = Math.max(0, Math.min(100,
-      30
-      + (t.physicalMovement * 0.30)
-      - (t.economicStress * 0.30)
-      - (t.sleepDebt * 0.25)
-      - (targetLoad * 0.15)
+      25
+      + (t.physicalMovement * 0.55)
+      - (t.economicStress * 0.25)
+      - (t.sleepDebt * 0.20)
+      - (targetLoad * 0.08)
+      + (previewMeaning * 0.12)
     ));
 
     let targetMeaning = Math.max(0, Math.min(100,
@@ -1870,12 +1934,14 @@ export default function CognitiveSimulator() {
 
       const currentLoad = nervousSystemLoad.get();
 
+      const currentMeaning = meaningScore.get();
       let targetAgency = Math.max(0, Math.min(100,
-        30
-        + (phys * 0.30)
-        - (econ * 0.30)
-        - (sleep * 0.25)
-        - (currentLoad * 0.15)
+        25
+        + (phys * 0.55)
+        - (econ * 0.25)
+        - (sleep * 0.20)
+        - (currentLoad * 0.08)
+        + (currentMeaning * 0.12)
       ));
 
       let targetMeaning = Math.max(0, Math.min(100,
@@ -1917,7 +1983,6 @@ export default function CognitiveSimulator() {
         agencyScore.set(Math.max(targetAgency, currentAgency - driftStep));
       }
 
-      const currentMeaning = meaningScore.get();
       let meaningDrift = driftStep;
       if (activeArchetypeRef.current === "Digital Detox" && currentMeaning < targetMeaning) {
         meaningDrift = driftStep * 0.3;
@@ -1930,53 +1995,69 @@ export default function CognitiveSimulator() {
 
       // Decrement flow window sustainability
       if (activeArchetypeRef.current === "Deep Flow") {
-        let hoursDec = 0;
+        let tickDuration = 0;
         if (isCompressionActiveRef.current) {
           const currHours = getSimulatedHours(elapsedSimulatedTimeRef.current);
           const prevHours = prevSimulatedHoursRef.current;
+          let hoursDec = 0;
           if (prevHours !== null) {
             hoursDec = Math.max(0, currHours - prevHours);
-          } else {
-            hoursDec = 0;
           }
           prevSimulatedHoursRef.current = currHours;
+          tickDuration = hoursDec * 3600;
         } else {
           prevSimulatedHoursRef.current = null;
-          hoursDec = 0.01 * (tickInterval / 500);
+          tickDuration = (tickInterval / 1000) * 60;
         }
 
-        const currentHoursRemaining = flowWindowHoursRemainingRef.current ?? 2.0;
-        const nextHours = Math.max(0, currentHoursRemaining - hoursDec);
-        const isExhausted = sustainabilityExhaustedRef.current;
+        const fp = flowProbability.get();
+        const currentSleepDebt = sleepDebt.get();
 
-        if (nextHours === 0 && !isExhausted) {
-          // At 100% elapsed:
-          // 1. Fire a narrative event
-          setLogs(prev => {
-            const nextId = prev.length + 1;
-            const updated = [...prev, { id: nextId, text: "[CRIT] Flow window exhausted", type: "crit" }];
-            if (updated.length > 8) updated.shift();
-            return updated;
-          });
-          setSessionEventsHistory(prev => [...prev, { name: "Flow window exhausted", category: "destabilizer" }]);
-
-          setSustainabilityExhausted(true);
-          sustainabilityExhaustedRef.current = true;
+        // Activation: selected AND flowProbability > 50
+        if (fp > 0.5 && !flowWindowActiveRef.current && !sustainabilityExhaustedRef.current) {
+          setFlowWindowActive(true);
+          flowWindowActiveRef.current = true;
         }
 
-        setFlowWindowHoursRemaining(nextHours);
-        flowWindowHoursRemainingRef.current = nextHours;
+        if (flowWindowActiveRef.current) {
+          const nextElapsed = flowWindowElapsedRef.current + tickDuration;
+          setFlowWindowElapsed(nextElapsed);
+          flowWindowElapsedRef.current = nextElapsed;
 
-        // If exhausted, check if sleep debt has returned below 25 to recover
-        if (sustainabilityExhaustedRef.current) {
-          if (sleep < 25) {
+          const pct = (nextElapsed / 7200) * 100;
+
+          // Under Phase 3 (elapsed > 75%): sleepDebt target increases by +0.5 per tick
+          if (pct > 75) {
+            sleepDebt.set(Math.min(100, currentSleepDebt + 0.5));
+          }
+
+          if (pct >= 100) {
+            // Fire narrative event
+            triggerNarrativeEvent("Flow Window Exhausted");
+
+            setLogs(prev => {
+              const nextId = prev.length + 1;
+              const updated = [...prev, { id: nextId, text: "[CRIT] Flow Window Exhausted", type: "crit" }];
+              if (updated.length > 8) updated.shift();
+              return updated;
+            });
+            setSessionEventsHistory(prev => [...prev, { name: "Flow Window Exhausted", category: "destabilizer" }]);
+
+            setFlowWindowActive(false);
+            flowWindowActiveRef.current = false;
+            setSustainabilityExhausted(true);
+            sustainabilityExhaustedRef.current = true;
+          }
+        } else if (sustainabilityExhaustedRef.current) {
+          // Recovery check: sleep debt recovered below 25
+          if (currentSleepDebt < 25) {
             setSustainabilityExhausted(false);
             sustainabilityExhaustedRef.current = false;
-            setFlowWindowHoursRemaining(2.0);
-            flowWindowHoursRemainingRef.current = 2.0;
+            setFlowWindowElapsed(0);
+            flowWindowElapsedRef.current = 0;
           } else {
             // Force sleepDebt +2 and stimulationLevel +5 per tick
-            sleepDebt.set(Math.min(100, sleep + 2));
+            sleepDebt.set(Math.min(100, currentSleepDebt + 2));
             stimulationLevel.set(Math.min(100, stim + 5));
           }
         }
@@ -2374,6 +2455,41 @@ export default function CognitiveSimulator() {
     }, 1200);
   };
 
+  const getLiveSnapshot = useCallback((): SimulatorState => {
+    return {
+      systemScores: {
+        attention: Math.round(100 - nervousSystemLoad.get()),
+        nervous: Math.round(nervousSystemLoad.get()),
+        identity: Math.round(identityCoherence.get()),
+        agency: Math.round(agencyScore.get()),
+        meaning: Math.round(meaningScore.get())
+      },
+      sliderValues: {
+        sleepDebt: Math.round(sleepDebt.get()),
+        stimulation: Math.round(stimulationLevel.get()),
+        socialPressure: Math.round(socialPressure.get()),
+        economicStress: Math.round(economicStress.get()),
+        physicalMovement: Math.round(physicalMovement.get()),
+        syntheticInteraction: Math.round(syntheticInteraction.get())
+      },
+      sessionDuration: sessionDuration,
+      activeArchetype: activeArchetype,
+      flowProbability: Math.round(flowProbability.get() * 100),
+      firedEvents: sessionEventsHistory
+    };
+  }, [
+    sessionDuration, activeArchetype, sessionEventsHistory,
+    nervousSystemLoad, identityCoherence, agencyScore, meaningScore,
+    sleepDebt, stimulationLevel, socialPressure, economicStress,
+    physicalMovement, syntheticInteraction, flowProbability
+  ]);
+
+  const handleDeepAnalysis = useCallback(() => {
+    const snapshot = getLiveSnapshot();
+    setAnalysisSnapshot(snapshot);
+    navigate('/analysis');
+  }, [getLiveSnapshot, navigate]);
+
   // Derived motion values for grid transform
   const gridTransform = useTransform(nervousSystemLoad, (load) => {
     if (load > 50) {
@@ -2402,6 +2518,14 @@ export default function CognitiveSimulator() {
   });
 
   const textFilter = useTransform(blurAmount, (blur) => `blur(${blur})`);
+
+  if (isAnalysis) {
+    return (
+      <SimulatorContext.Provider value={analysisSnapshot || getLiveSnapshot()}>
+        <Outlet />
+      </SimulatorContext.Provider>
+    );
+  }
 
   if (!isReady) {
     return (
@@ -2455,11 +2579,12 @@ export default function CognitiveSimulator() {
   }
 
   return (
-    <div 
-      ref={containerRef}
-      onPointerMove={handlePointerMove}
-      className="relative min-h-screen w-full bg-[#030303] text-zinc-300 flex flex-col font-sans select-none overflow-hidden transition-all duration-700"
-    >
+    <SimulatorContext.Provider value={analysisSnapshot || getLiveSnapshot()}>
+      <div 
+        ref={containerRef}
+        onPointerMove={handlePointerMove}
+        className="relative min-h-screen w-full bg-[#030303] text-zinc-300 flex flex-col font-sans select-none overflow-hidden transition-all duration-700"
+      >
       {/* Background Spatial Layer */}
       <div 
         ref={ambientGlowRef}
@@ -2487,6 +2612,9 @@ export default function CognitiveSimulator() {
       {/* Header HUD */}
       <HeaderStatus 
         nervousSystemLoad={nervousSystemLoad} 
+        identityCoherence={identityCoherence}
+        agencyScore={agencyScore}
+        meaningScore={meaningScore}
         isRebooting={isRebooting} 
         isMuted={isMuted} 
         setIsMuted={setIsMuted} 
@@ -2501,8 +2629,10 @@ export default function CognitiveSimulator() {
         }}
         profileLoaded={profileLoaded}
         sustainabilityLabel={sustainabilityLabel}
+        sustainabilityColor={sustainabilityColor}
         currentNearestArchetype={currentNearestArchetype}
         transitionProtocolActive={transitionProtocolActive}
+        onDeepAnalysis={handleDeepAnalysis}
       />
 
       {/* Main Spatial Grid Workspace */}
@@ -2525,6 +2655,7 @@ export default function CognitiveSimulator() {
           socialPressure={socialPressure}
           economicStress={economicStress}
           physicalMovement={physicalMovement}
+          syntheticInteraction={syntheticInteraction}
         />
 
         {/* Center Panel - The Core Experiment */}
@@ -2566,7 +2697,6 @@ export default function CognitiveSimulator() {
           {/* Identity Core banner & Identity Text Block below weather circles */}
           <div className="w-full max-w-xl flex flex-col space-y-4 relative py-4">
             <div className="relative w-full z-10">
-              <IdentityCore coherence={identityCoherence} />
 
               <div className="flex flex-col relative z-20 w-full text-center mt-3">
                 {/* Direct DOM rendering of scrambled, wiggling text */}
@@ -2684,10 +2814,6 @@ export default function CognitiveSimulator() {
                 <DepletionAlert show={sustainabilityExhausted && activeArchetype === "Deep Flow"} />
               </div>
 
-              {/* Diagnostic Monospace Readout (Vibe Friendly) */}
-              <DiagnosticReadout 
-                nervousSystemLoad={nervousSystemLoad}
-              />
 
               {/* Timeline Scrubber & Compression Panel */}
               <div className="w-full border-t border-zinc-900/60 pt-4 font-mono text-[10px] select-none text-left">
@@ -3053,6 +3179,7 @@ export default function CognitiveSimulator() {
         onApplyTargets={handleApplyPrescriptionTargets}
         currentNearestArchetype={currentNearestArchetype}
       />
-    </div>
+      </div>
+    </SimulatorContext.Provider>
   );
 }

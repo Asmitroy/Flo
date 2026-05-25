@@ -243,7 +243,7 @@ export function generateInsight(
     ['economicStress',sliders.economicStress],
   ];
   const dominant = stressorMap
-    .filter(([, v]) => v > 60)
+    .filter(([, v]) => v > 45)
     .sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
 
   // Insight lookup
@@ -265,6 +265,14 @@ export function generateInsight(
     insight = "Extreme stimulation fragmented attention and drained agency in sequence — first the ability to focus, then the ability to begin. These are not separate problems. They are the same problem at two stages.";
   } else if (degradedPair.has('identity') && degradedPair.has('agency') && dominant === 'socialPressure') {
     insight = "Social pressure eroded identity coherence, and without a stable sense of self, the agency system had no reference point for what to initiate. Paralysis followed not from weakness but from ambiguity.";
+  } else if (degradedPair.has('attention') && degradedPair.has('identity') && dominant === 'stimulation') {
+    insight = "High stimulation eroded attention first, then identity coherence followed. When the mind cannot focus, it also cannot maintain a stable internal reference point. These systems share a foundation.";
+  } else if (degradedPair.has('meaning') && degradedPair.has('nervous') && dominant === 'sleepDebt') {
+    insight = "Sleep debt suppressed the nervous system's recovery capacity while simultaneously depleting existential resources. Without rest, the system cannot generate purpose — it can only manage the immediate.";
+  } else if (degradedPair.has('agency') && degradedPair.has('identity') && dominant === 'economicStress') {
+    insight = "Economic stress simultaneously froze initiative and destabilized identity. When survival pressure is chronic, the self reorganizes around threat management. Long-term goals and stable self-concept are treated as luxuries.";
+  } else if (degradedPair.has('meaning') && degradedPair.has('identity') && dominant === 'socialPressure') {
+    insight = "Social comparison pressure reshaped identity while draining meaning. When the self is defined by external reference points, internal sources of purpose stop generating signal. The self becomes an audience rather than an author.";
   } else {
     insight = "The environmental conditions present in this simulation reliably produce these outcomes across populations. The specific degradation pattern reflects the specific stressors — not the specific person.";
   }

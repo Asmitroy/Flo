@@ -51,6 +51,12 @@ export const DESTABILIZERS: NarrativeEvent[] = [
     category: "destabilizer",
     duration: 120,
     deltas: { stimulation: 45, physicalMovement: -20 }
+  },
+  {
+    name: "Flow Window Exhausted",
+    category: "destabilizer",
+    duration: 60,
+    deltas: { sleepDebt: 20, stimulation: 10 }
   }
 ];
 
